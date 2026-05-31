@@ -1,7 +1,7 @@
 import { BookOpen, Camera } from 'lucide-react'
 
 function GrowthPreviewCard({ nextEntry, onOpen }) {
-  if (!nextEntry) {
+  if (!nextEntry || typeof nextEntry.unlockDay !== 'number' || typeof nextEntry.currentDay !== 'number') {
     return (
       <button onClick={onOpen} className="mt-5 w-full rounded-[28px] bg-white p-5 text-left shadow-soft">
         <div className="flex items-center gap-3">

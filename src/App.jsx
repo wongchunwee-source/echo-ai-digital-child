@@ -254,7 +254,20 @@ function App() {
   }
 
   const enterHome = () => {
-    setState((current) => ({ ...current, stage: 'app', activeTab: 'home' }))
+    setState((current) => {
+      const createdAt = current.child.createdAt || new Date().toISOString()
+      const growthDay = getGrowthDay(createdAt)
+      const safeAlbumEntries = hydrateAlbumEntries(current.albumEntries?.length ? current.albumEntries : createAlbumEntries(), growthDay)
+      return {
+        ...current,
+        stage: 'app',
+        activeTab: 'home',
+        child: { ...current.child, createdAt },
+        albumEntries: safeAlbumEntries,
+        lastSeenUnlockedAlbumIds: Array.isArray(current.lastSeenUnlockedAlbumIds) && current.lastSeenUnlockedAlbumIds.length ? current.lastSeenUnlockedAlbumIds : ['newborn'],
+        newAlbumMoment: null,
+      }
+    })
   }
 
   const sendMessage = (text) => {
