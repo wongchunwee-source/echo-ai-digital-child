@@ -20,6 +20,7 @@ import GrowthAlbum from './components/GrowthAlbum.jsx'
 import GrowthPreviewCard from './components/GrowthPreviewCard.jsx'
 
 const STORAGE_KEY = 'project-echo-beta-state'
+const MAX_PERSISTED_IMAGE_LENGTH = 450000
 
 const personalities = [
   { id: 'gentle', name: '温柔', hint: '敏感、会照顾别人', tone: '轻轻地' },
@@ -166,6 +167,20 @@ function loadState() {
   }
 }
 
+function createPersistableState(state) {
+  const photo = state.child?.photo || ''
+  const babyImage = state.child?.babyImage || ''
+
+  return {
+    ...state,
+    child: {
+      ...state.child,
+      photo: photo.length <= MAX_PERSISTED_IMAGE_LENGTH ? photo : '',
+      babyImage: babyImage.length <= MAX_PERSISTED_IMAGE_LENGTH ? babyImage : '',
+    },
+  }
+}
+
 function clamp(value) {
   return Math.max(0, Math.min(100, value))
 }
@@ -221,7 +236,26 @@ function App() {
   }, [child.createdAt, currentGrowthDay])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(createPersistableState(state)))
+    } catch (error) {
+      console.warn('ECHO local persistence failed, retrying with a smaller snapshot.', error)
+      const fallbackState = {
+        ...state,
+        child: {
+          ...state.child,
+          photo: '',
+          babyImage: '',
+        },
+        messages: state.messages.slice(-20),
+        events: state.events.slice(0, 20),
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(fallbackState))
+      } catch (fallbackError) {
+        console.warn('ECHO local persistence fallback failed.', fallbackError)
+      }
+    }
   }, [state])
 
   const openAlbum = () => {
