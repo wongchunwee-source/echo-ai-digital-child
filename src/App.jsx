@@ -342,6 +342,56 @@ function App() {
   )
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error) {
+    console.error('ECHO runtime error:', error)
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children
+
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#fff8ef] px-6 text-center text-[#342b25]">
+        <div className="w-full max-w-sm rounded-[32px] bg-white p-6 shadow-soft">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#fff0df]">
+            <Sparkles className="h-7 w-7 text-[#ff8f68]" />
+          </div>
+          <h1 className="mt-5 text-2xl font-black">ECHO 需要重新同步</h1>
+          <p className="mt-3 text-sm leading-relaxed text-[#7a6a5c]">
+            本地成长记录可能来自旧版本。重置后可以重新进入 Beta 体验。
+          </p>
+          <button
+            onClick={() => {
+              localStorage.removeItem(STORAGE_KEY)
+              window.location.href = '/?reset=1'
+            }}
+            className="mt-6 w-full rounded-[22px] bg-[#342b25] px-5 py-4 font-black text-white"
+          >
+            重置并重新开始
+          </button>
+        </div>
+      </main>
+    )
+  }
+}
+
+function RootApp() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  )
+}
+
 function Splash({ onStart }) {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#fff6ea] text-[#342b25]">
@@ -797,4 +847,4 @@ function Empty({ text }) {
   return <div className="rounded-[28px] bg-white p-6 text-center text-sm font-semibold text-[#8a7867] shadow-soft">{text}</div>
 }
 
-export default App
+export default RootApp
