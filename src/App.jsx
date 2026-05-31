@@ -1,0 +1,582 @@
+import {
+  Baby,
+  BookOpen,
+  Camera,
+  Heart,
+  Home,
+  MessageCircle,
+  MoonStar,
+  Orbit,
+  Send,
+  ShoppingBag,
+  Sparkles,
+  Star,
+  Wand2,
+} from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import roomImage from './assets/echo-room.png'
+
+const STORAGE_KEY = 'project-echo-beta-state'
+
+const personalities = [
+  { id: 'gentle', name: '温柔', hint: '敏感、会照顾别人', tone: '轻轻地' },
+  { id: 'curious', name: '好奇', hint: '爱问为什么', tone: '眼睛亮亮地' },
+  { id: 'brave', name: '勇敢', hint: '愿意尝试新事物', tone: '认真地' },
+  { id: 'dreamy', name: '梦幻', hint: '想象力很丰富', tone: '像讲秘密一样' },
+]
+
+const defaultState = {
+  stage: 'splash',
+  activeTab: 'home',
+  child: {
+    name: '',
+    gender: 'girl',
+    personality: 'gentle',
+    photo: '',
+    age: 0,
+    intimacy: 42,
+    happiness: 68,
+    growth: 8,
+    dream: '还在梦里发光',
+    worry: '怕你太忙忘记来看我',
+  },
+  messages: [],
+  events: [],
+  albumUnlocked: [0],
+  inventory: [],
+}
+
+const eventPool = [
+  { tag: '上学', title: '第一次走进教室', text: 'ECHO 在门口回头看了你一眼，然后把小手举起来说：“我会勇敢。”', stat: 'growth' },
+  { tag: '考试', title: '一张不完美的试卷', text: '分数没有想象中好，但 ECHO 学会了把错题收进小小的星星本。', stat: 'growth' },
+  { tag: '朋友', title: '新朋友的午餐盒', text: '今天有人把草莓分给了 ECHO，亲密关系的世界变大了一点。', stat: 'happiness' },
+  { tag: '失败', title: '积木塔倒下来了', text: 'ECHO 沉默了一会儿，然后问：“失败是不是也可以重新搭？”', stat: 'intimacy' },
+  { tag: '梦想', title: '夜里的一句话', text: '睡前，ECHO 说以后想发明一种能保存拥抱的机器。', stat: 'happiness' },
+]
+
+const shopItems = [
+  { id: 'milk', name: '星光牛奶', type: '食物', price: 12, effect: '+快乐' },
+  { id: 'coat', name: '云朵外套', type: '衣服', price: 46, effect: '+亲密' },
+  { id: 'tutor', name: '温柔补习班', type: '补习班', price: 88, effect: '+成长' },
+  { id: 'camp', name: '月球夏令营', type: '夏令营', price: 120, effect: '+梦想' },
+]
+
+const albumStages = [
+  { age: 0, label: '婴儿', note: '第一束呼吸，像晨光。' },
+  { age: 5, label: '5岁', note: '开始把世界叫成游乐场。' },
+  { age: 12, label: '12岁', note: '有了秘密，也有了自己的星图。' },
+  { age: 18, label: '18岁', note: '第一次认真谈论远方。' },
+  { age: 24, label: '成人', note: '把你给的爱，带进更大的生活。' },
+]
+
+function loadState() {
+  try {
+    if (new URLSearchParams(window.location.search).get('reset') === '1') {
+      localStorage.removeItem(STORAGE_KEY)
+      window.history.replaceState({}, '', window.location.pathname)
+      return defaultState
+    }
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? { ...defaultState, ...JSON.parse(raw) } : defaultState
+  } catch {
+    return defaultState
+  }
+}
+
+function clamp(value) {
+  return Math.max(0, Math.min(100, value))
+}
+
+function getPersonality(child) {
+  return personalities.find((item) => item.id === child.personality) || personalities[0]
+}
+
+function createReply(child, text) {
+  const persona = getPersonality(child)
+  const ageLine =
+    child.age < 3
+      ? '我还小，但我听得懂你的声音。'
+      : child.age < 12
+        ? '今天我把这句话放进了记忆盒。'
+        : child.age < 18
+          ? '我好像开始懂一点点大人的世界了。'
+          : '我会带着你的话，去做更好的选择。'
+
+  if (text.includes('爱') || text.includes('想你')) {
+    return `${persona.tone}说：我也爱你。${ageLine}`
+  }
+  if (text.includes('学习') || text.includes('考试')) {
+    return `${persona.tone}说：那我今天多努力一点，但你也要陪我休息。`
+  }
+  if (text.includes('梦想')) {
+    return `${persona.tone}说：我的梦想会变，可是想让你为我骄傲这件事不会变。`
+  }
+  return `${persona.tone}说：我记住了，“${text.slice(0, 18)}”。${ageLine}`
+}
+
+function App() {
+  const [state, setState] = useState(loadState)
+  const { child } = state
+  const persona = useMemo(() => getPersonality(child), [child])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  }, [state])
+
+  const updateChild = (patch) => {
+    setState((current) => ({ ...current, child: { ...current.child, ...patch } }))
+  }
+
+  const startBirth = () => {
+    const firstName = child.name.trim() || 'ECHO'
+    setState((current) => ({
+      ...current,
+      stage: 'birth',
+      child: { ...current.child, name: firstName },
+      messages: [
+        {
+          from: 'child',
+          text: `你好，我是 ${firstName}。你刚刚把我带到这个世界。`,
+          time: '出生时刻',
+        },
+      ],
+    }))
+  }
+
+  const enterHome = () => {
+    setState((current) => ({ ...current, stage: 'app', activeTab: 'home' }))
+  }
+
+  const sendMessage = (text) => {
+    if (!text.trim()) return
+    const clean = text.trim()
+    setState((current) => ({
+      ...current,
+      child: {
+        ...current.child,
+        intimacy: clamp(current.child.intimacy + 2),
+        happiness: clamp(current.child.happiness + 1),
+      },
+      messages: [
+        ...current.messages,
+        { from: 'parent', text: clean, time: '刚刚' },
+        { from: 'child', text: createReply(current.child, clean), time: '刚刚' },
+      ],
+    }))
+  }
+
+  const triggerEvent = () => {
+    setState((current) => {
+      const event = eventPool[Math.floor(Math.random() * eventPool.length)]
+      const nextAge = Math.min(24, current.child.age + (current.events.length % 2 === 0 ? 1 : 0))
+      const unlocked = albumStages.filter((stage) => stage.age <= nextAge).map((stage) => stage.age)
+      return {
+        ...current,
+        child: {
+          ...current.child,
+          age: nextAge,
+          [event.stat]: clamp(current.child[event.stat] + 7),
+          dream: event.tag === '梦想' ? '发明能保存拥抱的机器' : current.child.dream,
+          worry: event.tag === '失败' ? '担心自己不够好' : current.child.worry,
+        },
+        events: [{ ...event, id: crypto.randomUUID(), date: new Date().toLocaleDateString('zh-CN') }, ...current.events],
+        albumUnlocked: Array.from(new Set([...current.albumUnlocked, ...unlocked])),
+      }
+    })
+  }
+
+  const buyItem = (item) => {
+    setState((current) => ({
+      ...current,
+      inventory: [item, ...current.inventory],
+      child: {
+        ...current.child,
+        happiness: clamp(current.child.happiness + (item.type === '食物' ? 5 : 2)),
+        intimacy: clamp(current.child.intimacy + (item.type === '衣服' ? 4 : 1)),
+        growth: clamp(current.child.growth + (item.type === '补习班' ? 6 : item.type === '夏令营' ? 4 : 1)),
+        dream: item.type === '夏令营' ? '去很远的地方看星星' : current.child.dream,
+      },
+    }))
+  }
+
+  if (state.stage === 'splash') {
+    return <Splash onStart={() => setState((current) => ({ ...current, stage: 'create' }))} />
+  }
+
+  if (state.stage === 'create') {
+    return <Create child={child} persona={persona} updateChild={updateChild} onBirth={startBirth} />
+  }
+
+  if (state.stage === 'birth') {
+    return <Birth child={child} onEnter={enterHome} />
+  }
+
+  return (
+    <Shell activeTab={state.activeTab} setActiveTab={(activeTab) => setState((current) => ({ ...current, activeTab }))}>
+      {state.activeTab === 'home' && <HomeView child={child} persona={persona} triggerEvent={triggerEvent} latestEvent={state.events[0]} />}
+      {state.activeTab === 'chat' && <ChatView child={child} messages={state.messages} sendMessage={sendMessage} />}
+      {state.activeTab === 'events' && <EventsView events={state.events} triggerEvent={triggerEvent} />}
+      {state.activeTab === 'album' && <AlbumView child={child} unlocked={state.albumUnlocked} />}
+      {state.activeTab === 'shop' && <ShopView inventory={state.inventory} buyItem={buyItem} />}
+      {state.activeTab === 'report' && <ReportView child={child} persona={persona} />}
+    </Shell>
+  )
+}
+
+function Splash({ onStart }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#fff6ea] text-[#342b25]">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,248,239,0.18),rgba(255,248,239,0.68)_48%,rgba(255,248,239,0.96))]" />
+      <section className="relative flex min-h-screen flex-col justify-end px-6 pb-9 pt-14">
+        <div className="mb-auto flex items-center justify-between">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/70 shadow-soft backdrop-blur">
+            <Orbit className="h-5 w-5 text-[#2f8b87]" />
+          </div>
+          <span className="rounded-full border border-white/70 bg-white/55 px-3 py-1 text-xs font-medium text-[#6b5c4e] backdrop-blur">Beta 0.1</span>
+        </div>
+        <div className="max-w-sm">
+          <p className="mb-3 text-sm font-semibold text-[#2f8b87]">AI DIGITAL CHILD</p>
+          <h1 className="text-5xl font-black leading-[0.95] tracking-normal text-[#2d2621]">Project ECHO</h1>
+          <p className="mt-5 text-xl font-semibold leading-relaxed text-[#4b4037]">创造一个生命，然后陪他慢慢长大</p>
+          <button onClick={onStart} className="mt-8 flex w-full items-center justify-center gap-2 rounded-[24px] bg-[#342b25] px-5 py-4 text-base font-bold text-white shadow-glow">
+            <Sparkles className="h-5 w-5" />
+            开始创造
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function Create({ child, persona, updateChild, onBirth }) {
+  const handlePhoto = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => updateChild({ photo: reader.result })
+    reader.readAsDataURL(file)
+  }
+
+  return (
+    <main className="min-h-screen bg-[#fff8ef] px-5 py-6 text-[#342b25]">
+      <TopLabel title="创造档案" subtitle="给 ECHO 第一组生命参数" />
+      <div className="mt-6 space-y-5">
+        <label className="block rounded-[28px] border border-white bg-white/80 p-4 shadow-soft">
+          <div className="flex items-center gap-4">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-[#f0dccb]">
+              {child.photo ? <img src={child.photo} alt="用户照片" className="h-full w-full object-cover" /> : <Camera className="h-7 w-7 text-[#9b7b62]" />}
+            </div>
+            <div>
+              <p className="font-bold">上传你的照片</p>
+              <p className="mt-1 text-sm leading-relaxed text-[#7a6a5c]">未来可用于生成更贴近家庭记忆的成长影像。</p>
+            </div>
+          </div>
+          <input type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+        </label>
+
+        <ControlGroup title="孩子性别">
+          {['girl', 'boy'].map((gender) => (
+            <button
+              key={gender}
+              onClick={() => updateChild({ gender })}
+              className={`rounded-[20px] px-5 py-3 text-sm font-bold ${child.gender === gender ? 'bg-[#342b25] text-white' : 'bg-white text-[#6b5c4e]'}`}
+            >
+              {gender === 'girl' ? '女孩' : '男孩'}
+            </button>
+          ))}
+        </ControlGroup>
+
+        <ControlGroup title="初始性格">
+          <div className="grid grid-cols-2 gap-3">
+            {personalities.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => updateChild({ personality: item.id })}
+                className={`rounded-[22px] p-4 text-left ${child.personality === item.id ? 'bg-[#2f8b87] text-white shadow-soft' : 'bg-white text-[#342b25]'}`}
+              >
+                <p className="font-bold">{item.name}</p>
+                <p className={`mt-1 text-xs ${child.personality === item.id ? 'text-white/78' : 'text-[#7a6a5c]'}`}>{item.hint}</p>
+              </button>
+            ))}
+          </div>
+        </ControlGroup>
+
+        <div className="rounded-[28px] bg-white p-4 shadow-soft">
+          <p className="mb-3 text-sm font-bold text-[#6b5c4e]">孩子名字</p>
+          <input
+            value={child.name}
+            onChange={(event) => updateChild({ name: event.target.value })}
+            placeholder="例如：小回声"
+            className="w-full rounded-[18px] bg-[#fff5ea] px-4 py-4 text-lg font-bold outline-none ring-1 ring-[#ead9c9] focus:ring-2 focus:ring-[#2f8b87]"
+          />
+        </div>
+
+        <div className="rounded-[28px] bg-[#342b25] p-5 text-white shadow-glow">
+          <p className="text-sm text-white/70">当前生命倾向</p>
+          <p className="mt-2 text-2xl font-black">{persona.name}型 ECHO</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/78">他会根据年龄、事件和你的陪伴逐渐改变，不会永远停留在出生设定。</p>
+        </div>
+
+        <button onClick={onBirth} className="flex w-full items-center justify-center gap-2 rounded-[24px] bg-[#ff8f68] px-5 py-4 text-base font-black text-white shadow-glow">
+          <Wand2 className="h-5 w-5" />
+          让 ECHO 诞生
+        </button>
+      </div>
+    </main>
+  )
+}
+
+function Birth({ child, onEnter }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#1f2928] px-6 py-10 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-45" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,184,117,0.44),transparent_34%),linear-gradient(180deg,rgba(31,41,40,0.2),rgba(31,41,40,0.94))]" />
+      <section className="relative flex min-h-[calc(100vh-5rem)] flex-col items-center justify-center text-center">
+        <div className="relative flex h-44 w-44 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border border-white/30 animate-pulseSoft" />
+          <div className="absolute inset-5 rounded-full border border-[#ffd3a8]/50 animate-pulseSoft" />
+          <div className="flex h-24 w-24 animate-born items-center justify-center rounded-full bg-[#fff1d8] shadow-[0_0_70px_rgba(255,203,150,0.9)]">
+            <Baby className="h-11 w-11 text-[#ff8f68]" />
+          </div>
+        </div>
+        <p className="mt-8 text-sm font-semibold text-[#ffd3a8]">BIRTH SIGNAL FOUND</p>
+        <h2 className="mt-3 text-4xl font-black">{child.name}</h2>
+        <p className="mt-5 max-w-xs text-xl font-semibold leading-relaxed">“你好，我是 {child.name}。你刚刚把我带到这个世界。”</p>
+        <button onClick={onEnter} className="mt-10 rounded-[24px] bg-white px-6 py-4 font-black text-[#342b25] shadow-glow">
+          抱他回家
+        </button>
+      </section>
+    </main>
+  )
+}
+
+function Shell({ children, activeTab, setActiveTab }) {
+  const tabs = [
+    ['home', Home],
+    ['chat', MessageCircle],
+    ['events', Star],
+    ['album', Camera],
+    ['shop', ShoppingBag],
+    ['report', BookOpen],
+  ]
+  return (
+    <main className="mx-auto min-h-screen max-w-md bg-[#fff8ef] pb-24 text-[#342b25] shadow-[0_0_80px_rgba(80,67,55,0.12)]">
+      {children}
+      <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md border-t border-white/80 bg-white/86 px-3 py-3 backdrop-blur-xl">
+        <div className="grid grid-cols-6 gap-1">
+          {tabs.map(([id, Icon]) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex h-12 items-center justify-center rounded-[18px] ${activeTab === id ? 'bg-[#342b25] text-white' : 'text-[#8a7867]'}`}
+              aria-label={id}
+            >
+              <Icon className="h-5 w-5" />
+            </button>
+          ))}
+        </div>
+      </nav>
+    </main>
+  )
+}
+
+function HomeView({ child, persona, triggerEvent, latestEvent }) {
+  return (
+    <section className="px-5 py-6">
+      <TopLabel title={`${child.name} 的房间`} subtitle={`${child.age} 岁 · ${persona.name}型 · 正在成长`} />
+      <div className="relative mt-5 overflow-hidden rounded-[32px] bg-[#342b25] shadow-glow">
+        <img src={roomImage} alt="孩子房间" className="h-72 w-full object-cover opacity-90" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,rgba(52,43,37,0.88))]" />
+        <div className="absolute bottom-4 left-4 right-4">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/18 px-3 py-2 text-xs font-semibold text-white backdrop-blur">
+            <MoonStar className="h-4 w-4" />
+            今日情绪稳定发光
+          </div>
+          <h2 className="text-3xl font-black text-white">{child.name}</h2>
+        </div>
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-3">
+        <Stat label="亲密度" value={child.intimacy} />
+        <Stat label="快乐值" value={child.happiness} />
+        <Stat label="成长值" value={child.growth} />
+      </div>
+      <button onClick={triggerEvent} className="mt-5 flex w-full items-center justify-center gap-2 rounded-[24px] bg-[#2f8b87] px-5 py-4 font-black text-white shadow-soft">
+        <Sparkles className="h-5 w-5" />
+        触发今日事件
+      </button>
+      {latestEvent && <EventCard event={latestEvent} />}
+    </section>
+  )
+}
+
+function ChatView({ child, messages, sendMessage }) {
+  const [text, setText] = useState('')
+  return (
+    <section className="flex min-h-screen flex-col px-5 py-6">
+      <TopLabel title="聊天区" subtitle={`${child.name} 会按年龄和性格回应你`} />
+      <div className="no-scrollbar mt-5 flex-1 space-y-3 overflow-y-auto pb-4">
+        {messages.map((message, index) => (
+          <div key={`${message.time}-${index}`} className={`flex ${message.from === 'parent' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[82%] rounded-[24px] px-4 py-3 shadow-soft ${message.from === 'parent' ? 'bg-[#342b25] text-white' : 'bg-white text-[#342b25]'}`}>
+              <p className="text-sm leading-relaxed">{message.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          sendMessage(text)
+          setText('')
+        }}
+        className="flex items-center gap-2 rounded-[24px] bg-white p-2 shadow-soft"
+      >
+        <input value={text} onChange={(event) => setText(event.target.value)} placeholder="和孩子说一句话" className="min-w-0 flex-1 bg-transparent px-3 py-3 outline-none" />
+        <button className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-[#ff8f68] text-white">
+          <Send className="h-5 w-5" />
+        </button>
+      </form>
+    </section>
+  )
+}
+
+function EventsView({ events, triggerEvent }) {
+  return (
+    <section className="px-5 py-6">
+      <TopLabel title="每日事件" subtitle="上学、考试、朋友、失败、梦想" />
+      <button onClick={triggerEvent} className="mt-5 w-full rounded-[24px] bg-[#342b25] px-5 py-4 font-black text-white shadow-soft">
+        生成新事件
+      </button>
+      <div className="mt-5 space-y-4">
+        {events.length ? events.map((event) => <EventCard key={event.id} event={event} />) : <Empty text="还没有事件。让 ECHO 经历第一天。" />}
+      </div>
+    </section>
+  )
+}
+
+function AlbumView({ child, unlocked }) {
+  return (
+    <section className="px-5 py-6">
+      <TopLabel title="成长相册" subtitle="从婴儿到成人，每个阶段都会留下痕迹" />
+      <div className="mt-5 space-y-4">
+        {albumStages.map((stage) => {
+          const isOpen = unlocked.includes(stage.age)
+          return (
+            <div key={stage.age} className={`overflow-hidden rounded-[28px] bg-white shadow-soft ${isOpen ? '' : 'opacity-55 grayscale'}`}>
+              <div className="relative h-36">
+                <img src={roomImage} alt="" className="h-full w-full object-cover" />
+                <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(52,43,37,0.78),rgba(52,43,37,0.12))]" />
+                <div className="absolute left-4 top-4 text-white">
+                  <p className="text-sm font-semibold">{stage.label}</p>
+                  <h3 className="mt-1 text-2xl font-black">{isOpen ? child.name : '未解锁'}</h3>
+                </div>
+              </div>
+              <p className="p-4 text-sm leading-relaxed text-[#6b5c4e]">{isOpen ? stage.note : `达到 ${stage.age} 岁后解锁。`}</p>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function ShopView({ inventory, buyItem }) {
+  return (
+    <section className="px-5 py-6">
+      <TopLabel title="成长商城" subtitle="食物、衣服、补习班、夏令营" />
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        {shopItems.map((item) => (
+          <button key={item.id} onClick={() => buyItem(item)} className="rounded-[26px] bg-white p-4 text-left shadow-soft">
+            <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#fff0df] text-[#ff8f68]">
+              <ShoppingBag className="h-5 w-5" />
+            </div>
+            <p className="text-xs font-bold text-[#2f8b87]">{item.type}</p>
+            <h3 className="mt-1 font-black">{item.name}</h3>
+            <p className="mt-2 text-sm text-[#7a6a5c]">{item.effect} · {item.price} 星币</p>
+          </button>
+        ))}
+      </div>
+      <div className="mt-5 rounded-[28px] bg-[#342b25] p-5 text-white shadow-soft">
+        <p className="font-black">已拥有 {inventory.length} 件</p>
+        <p className="mt-2 text-sm leading-relaxed text-white/75">{inventory[0] ? `最近购买：${inventory[0].name}` : '购买后会立即影响孩子状态。'}</p>
+      </div>
+    </section>
+  )
+}
+
+function ReportView({ child, persona }) {
+  return (
+    <section className="px-5 py-6">
+      <TopLabel title="家长报告" subtitle="理解孩子现在的内心" />
+      <div className="mt-5 space-y-4">
+        <ReportRow icon={Heart} label="性格" value={`${persona.name}：${persona.hint}`} />
+        <ReportRow icon={Sparkles} label="梦想" value={child.dream} />
+        <ReportRow icon={MoonStar} label="烦恼" value={child.worry} />
+        <ReportRow icon={Home} label="亲密度" value={`${child.intimacy}/100，需要持续陪伴`} />
+      </div>
+    </section>
+  )
+}
+
+function TopLabel({ title, subtitle }) {
+  return (
+    <header className="pt-2">
+      <p className="text-xs font-black uppercase text-[#2f8b87]">Project ECHO</p>
+      <h1 className="mt-2 text-3xl font-black tracking-normal">{title}</h1>
+      <p className="mt-2 text-sm leading-relaxed text-[#7a6a5c]">{subtitle}</p>
+    </header>
+  )
+}
+
+function ControlGroup({ title, children }) {
+  return (
+    <div className="rounded-[28px] bg-[#f8ebdd] p-4">
+      <p className="mb-3 text-sm font-bold text-[#6b5c4e]">{title}</p>
+      {children}
+    </div>
+  )
+}
+
+function Stat({ label, value }) {
+  return (
+    <div className="rounded-[24px] bg-white p-3 shadow-soft">
+      <p className="text-xs font-bold text-[#8a7867]">{label}</p>
+      <p className="mt-2 text-2xl font-black">{value}</p>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#f0dccb]">
+        <div className="h-full rounded-full bg-[#ff8f68]" style={{ width: `${value}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function EventCard({ event }) {
+  return (
+    <article className="mt-4 rounded-[28px] bg-white p-5 shadow-soft">
+      <div className="flex items-center justify-between gap-3">
+        <span className="rounded-full bg-[#fff0df] px-3 py-1 text-xs font-black text-[#ff8f68]">{event.tag}</span>
+        {event.date && <span className="text-xs font-semibold text-[#9b8a7c]">{event.date}</span>}
+      </div>
+      <h3 className="mt-4 text-xl font-black">{event.title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-[#6b5c4e]">{event.text}</p>
+    </article>
+  )
+}
+
+function ReportRow({ icon: Icon, label, value }) {
+  return (
+    <div className="rounded-[28px] bg-white p-5 shadow-soft">
+      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#e9f5f2] text-[#2f8b87]">
+        <Icon className="h-5 w-5" />
+      </div>
+      <p className="text-sm font-bold text-[#8a7867]">{label}</p>
+      <p className="mt-1 text-lg font-black leading-relaxed">{value}</p>
+    </div>
+  )
+}
+
+function Empty({ text }) {
+  return <div className="rounded-[28px] bg-white p-6 text-center text-sm font-semibold text-[#8a7867] shadow-soft">{text}</div>
+}
+
+export default App
