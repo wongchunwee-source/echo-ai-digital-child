@@ -54,15 +54,42 @@ const defaultState = {
 
 const imageGenerationService = {
   async generateBabyPreview({ parentPhoto, gender, personality }) {
-    // Future integration point: replace this placeholder with OpenAI Images,
-    // Firebase Storage upload, or another image generation provider.
+    // Future integration point: call an image model with parentPhoto and ask for
+    // a gentle baby-version portrait that preserves family resemblance.
     await new Promise((resolve) => setTimeout(resolve, 2800))
     return {
       imageUrl: '',
       provider: 'placeholder',
-      promptContext: { hasParentPhoto: Boolean(parentPhoto), gender, personality },
+      promptContext: {
+        intent: 'baby-version-from-parent-selfie',
+        hasParentPhoto: Boolean(parentPhoto),
+        gender,
+        personality,
+      },
     }
   },
+}
+
+function compressImageFile(file, maxSize = 900, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = () => {
+      const image = new Image()
+      image.onerror = reject
+      image.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(image.width * scale))
+        canvas.height = Math.max(1, Math.round(image.height * scale))
+        const context = canvas.getContext('2d')
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      image.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
 }
 
 const eventPool = [
@@ -360,11 +387,11 @@ function App() {
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props)
-    this.state = { hasError: false }
+    this.state = { hasError: false, message: '' }
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error?.message || 'Unknown runtime error' }
   }
 
   componentDidCatch(error) {
@@ -383,6 +410,9 @@ class ErrorBoundary extends React.Component {
           <h1 className="mt-5 text-2xl font-black">ECHO 需要重新同步</h1>
           <p className="mt-3 text-sm leading-relaxed text-[#7a6a5c]">
             本地成长记录可能来自旧版本。重置后可以重新进入 Beta 体验。
+          </p>
+          <p className="mt-4 rounded-[16px] bg-[#fff5ea] p-3 text-xs font-semibold leading-relaxed text-[#9b5a42]">
+            {this.state.message}
           </p>
           <button
             onClick={() => {
@@ -434,12 +464,11 @@ function Splash({ onStart }) {
 }
 
 function Create({ child, persona, updateChild, onPhotoReady }) {
-  const handlePhoto = (event) => {
+  const handlePhoto = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => onPhotoReady(reader.result)
-    reader.readAsDataURL(file)
+    const compressedPhoto = await compressImageFile(file)
+    onPhotoReady(compressedPhoto)
   }
 
   return (
@@ -508,19 +537,31 @@ function Gestating({ child, onComplete }) {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#1f2928] px-6 py-10 text-white">
       <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(255,184,117,0.55),transparent_33%),linear-gradient(180deg,rgba(31,41,40,0.1),rgba(31,41,40,0.96))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(255,184,117,0.5),transparent_34%),linear-gradient(180deg,rgba(31,41,40,0.08),rgba(31,41,40,0.96))]" />
       <section className="relative flex min-h-[calc(100vh-5rem)] flex-col items-center justify-center text-center">
-        <div className="relative flex h-56 w-56 items-center justify-center">
-          <div className="absolute inset-0 animate-pulseSoft rounded-full border border-[#ffd3a8]/40" />
-          <div className="absolute inset-8 animate-float rounded-full border border-white/30" />
-          <div className="absolute inset-16 rounded-full bg-[#ffcf9f]/20 blur-xl" />
-          <div className="flex h-28 w-28 animate-born items-center justify-center overflow-hidden rounded-full bg-white/12 shadow-[0_0_80px_rgba(255,184,117,0.75)] backdrop-blur-xl">
-            {child.photo ? <img src={child.photo} alt="" className="h-full w-full scale-125 object-cover opacity-70 blur-[1px]" /> : <Baby className="h-12 w-12 text-[#ffd3a8]" />}
+        <div className="relative flex h-72 w-72 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border border-[#ffd3a8]/24" />
+          <div className="absolute inset-8 animate-pulseSoft rounded-full border border-white/25" />
+          <div className="absolute left-6 top-1/2 h-3 w-20 -translate-y-1/2 animate-[float_2.6s_ease-in-out_infinite] rounded-full bg-white/70 shadow-[0_0_24px_rgba(255,255,255,0.65)]">
+            <span className="absolute -right-3 -top-2 h-7 w-7 rounded-full bg-white shadow-[0_0_28px_rgba(255,255,255,0.9)]" />
+          </div>
+          <div className="absolute right-8 top-24 h-2 w-16 rotate-[-22deg] animate-[float_3.1s_ease-in-out_infinite] rounded-full bg-[#bff4ef]/70">
+            <span className="absolute -left-3 -top-2 h-6 w-6 rounded-full bg-[#d8fffa] shadow-[0_0_22px_rgba(191,244,239,0.8)]" />
+          </div>
+          <div className="absolute bottom-20 right-10 h-2 w-14 rotate-[28deg] animate-[float_2.9s_ease-in-out_infinite] rounded-full bg-[#ffd3a8]/80">
+            <span className="absolute -left-3 -top-2 h-6 w-6 rounded-full bg-[#fff1d8] shadow-[0_0_22px_rgba(255,211,168,0.9)]" />
+          </div>
+          <div className="relative flex h-36 w-36 items-center justify-center rounded-full bg-[#fff1d8] shadow-[0_0_90px_rgba(255,203,150,0.95)]">
+            <div className="absolute inset-3 animate-pulseSoft rounded-full border border-[#ff8f68]/35" />
+            <div className="absolute inset-8 rounded-full bg-[#ff8f68]/18 blur-lg" />
+            <div className="flex h-20 w-20 animate-born items-center justify-center overflow-hidden rounded-full bg-white/70">
+              {child.photo ? <img src={child.photo} alt="" className="h-full w-full scale-150 object-cover opacity-45 blur-[2px]" /> : <Baby className="h-10 w-10 text-[#ff8f68]" />}
+            </div>
           </div>
         </div>
-        <p className="mt-8 text-sm font-semibold text-[#ffd3a8]">LIFE SIGNAL FORMING</p>
+        <p className="mt-6 text-sm font-semibold text-[#ffd3a8]">GENESIS SIGNAL</p>
         <h1 className="mt-3 text-3xl font-black">正在孕育新生命...</h1>
-        <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/72">你的影像正在变成第一段遗传记忆。请等他慢慢出现。</p>
+        <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/72">生命的第一道光正在形成。你的模样，会成为他的第一段记忆。</p>
       </section>
     </main>
   )
@@ -532,18 +573,32 @@ function BabyPreview({ child, onContinue }) {
       <TopLabel title="第一次看见他" subtitle="ECHO 的第一张生命影像" />
       <section className="mt-6 overflow-hidden rounded-[34px] bg-[#342b25] p-4 text-white shadow-glow">
         <div className="relative aspect-[4/5] overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_50%_36%,#fff2d8,rgba(255,184,117,0.45)_34%,rgba(47,139,135,0.34)_72%)]">
+          {child.photo && <img src={child.photo} alt="" className="absolute inset-0 h-full w-full scale-125 object-cover opacity-20 blur-md" />}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(255,245,232,0.72),rgba(255,184,117,0.26)_44%,rgba(52,43,37,0.42)_100%)]" />
           {child.babyImage ? (
-            <img src={child.babyImage} alt="AI generated baby preview" className="h-full w-full object-cover" />
+            <img src={child.babyImage} alt="AI generated baby preview" className="relative h-full w-full object-cover" />
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="relative flex h-36 w-36 items-center justify-center rounded-full bg-white/72 shadow-[0_0_70px_rgba(255,255,255,0.68)]">
-                <div className="absolute -inset-8 rounded-full border border-white/50" />
-                <Baby className="h-16 w-16 text-[#ff8f68]" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
+              <div className="relative flex h-44 w-44 items-center justify-center rounded-full bg-white/72 shadow-[0_0_80px_rgba(255,255,255,0.72)]">
+                <div className="absolute -inset-8 rounded-full border border-white/45" />
+                <div className="absolute inset-4 rounded-full border border-[#ff8f68]/30" />
+                {child.photo ? (
+                  <div className="relative h-28 w-28 overflow-hidden rounded-full bg-[#fff0df]">
+                    <img src={child.photo} alt="" className="h-full w-full scale-150 object-cover opacity-50 blur-[1.5px] saturate-75" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#fff0df]/48">
+                      <Baby className="h-14 w-14 text-[#ff8f68]" />
+                    </div>
+                  </div>
+                ) : (
+                  <Baby className="h-16 w-16 text-[#ff8f68]" />
+                )}
               </div>
-              <p className="mt-8 rounded-full bg-white/18 px-4 py-2 text-xs font-bold text-white backdrop-blur">AI Baby Image Placeholder</p>
+              <p className="mt-8 rounded-full bg-white/18 px-4 py-2 text-xs font-bold text-white backdrop-blur">Baby-version Image Placeholder</p>
+              <p className="mt-3 max-w-[220px] text-xs leading-relaxed text-white/72">未来这里会由图像模型生成：保留你的部分五官气质，并转化为婴儿时期的模样。</p>
             </div>
           )}
           {child.photo && <img src={child.photo} alt="" className="absolute bottom-4 right-4 h-16 w-16 rounded-[20px] border-2 border-white/80 object-cover shadow-soft" />}
+          <div className="absolute left-4 top-4 rounded-full bg-white/18 px-3 py-1 text-xs font-black text-white backdrop-blur">GENESIS COMPLETE</div>
         </div>
         <div className="px-2 py-5 text-center">
           <p className="text-2xl font-black leading-snug">他继承了你的一部分模样。</p>
