@@ -53,6 +53,9 @@ const defaultState = {
   inventory: [],
 }
 
+const validStages = new Set(['splash', 'create', 'gestating', 'babyPreview', 'name', 'birth', 'app'])
+const validTabs = new Set(['home', 'chat', 'events', 'album', 'shop', 'report'])
+
 const imageGenerationService = {
   async generateBabyPreview({ parentPhoto, gender, personality }) {
     // Future integration point: call an image model with parentPhoto and ask for
@@ -158,9 +161,15 @@ function loadState() {
     return {
       ...defaultState,
       ...parsed,
+      stage: validStages.has(parsed.stage) ? parsed.stage : defaultState.stage,
+      activeTab: validTabs.has(parsed.activeTab) ? parsed.activeTab : defaultState.activeTab,
       child,
+      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+      events: Array.isArray(parsed.events) ? parsed.events : [],
+      inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
       albumEntries: hydrateAlbumEntries(parsed.albumEntries, currentDay),
       lastSeenUnlockedAlbumIds: Array.isArray(parsed.lastSeenUnlockedAlbumIds) ? parsed.lastSeenUnlockedAlbumIds : [],
+      newAlbumMoment: parsed.newAlbumMoment && typeof parsed.newAlbumMoment === 'object' ? parsed.newAlbumMoment : null,
     }
   } catch {
     return defaultState
@@ -463,6 +472,48 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+class InlineErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, message: '' }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error?.message || 'Unknown runtime error' }
+  }
+
+  componentDidCatch(error) {
+    console.error('ECHO view error:', error)
+  }
+
+  componentDidUpdate(previousProps) {
+    if (this.props.resetKey !== previousProps.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, message: '' })
+    }
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children
+
+    return (
+      <section className="px-5 py-6">
+        <div className="rounded-[28px] bg-white p-5 text-[#342b25] shadow-soft">
+          <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#fff0df] text-[#ff8f68]">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <h2 className="mt-4 text-xl font-black">这个页面刚刚打了个盹</h2>
+          <p className="mt-2 text-sm leading-relaxed text-[#7a6a5c]">
+            ECHO 的核心记录还在。切换一下底部导航，或者刷新页面，就能继续。
+          </p>
+          <p className="mt-4 rounded-[16px] bg-[#fff5ea] p-3 text-xs font-semibold leading-relaxed text-[#9b5a42]">
+            {this.state.message}
+          </p>
+        </div>
+      </section>
+    )
+  }
+}
+
 function RootApp() {
   return (
     <ErrorBoundary>
@@ -711,7 +762,9 @@ function Shell({ children, activeTab, setActiveTab }) {
   ]
   return (
     <main className="mx-auto min-h-screen max-w-md bg-[#fff8ef] pb-24 text-[#342b25] shadow-[0_0_80px_rgba(80,67,55,0.12)]">
-      {children}
+      <InlineErrorBoundary resetKey={activeTab}>
+        {children}
+      </InlineErrorBoundary>
       <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md border-t border-white/80 bg-white/86 px-3 py-3 backdrop-blur-xl">
         <div className="grid grid-cols-6 gap-1">
           {tabs.map(([id, Icon]) => (
@@ -754,7 +807,9 @@ function HomeView({ child, persona, triggerEvent, latestEvent, nextAlbumEntry, o
         <Sparkles className="h-5 w-5" />
         触发今日事件
       </button>
-      <GrowthPreviewCard nextEntry={nextAlbumEntry} onOpen={onOpenAlbum} />
+      <InlineErrorBoundary resetKey={`growth-preview-${nextAlbumEntry?.id || 'complete'}`}>
+        <GrowthPreviewCard nextEntry={nextAlbumEntry} onOpen={onOpenAlbum} />
+      </InlineErrorBoundary>
       {latestEvent && <EventCard event={latestEvent} />}
     </section>
   )
