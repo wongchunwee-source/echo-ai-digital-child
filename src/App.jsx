@@ -13,7 +13,7 @@ import {
   Star,
   Wand2,
 } from 'lucide-react'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import roomImage from './assets/echo-room.png'
 
 const STORAGE_KEY = 'project-echo-beta-state'
@@ -33,6 +33,7 @@ const defaultState = {
     gender: 'girl',
     personality: 'gentle',
     photo: '',
+    babyImage: '',
     age: 0,
     intimacy: 42,
     happiness: 68,
@@ -44,6 +45,19 @@ const defaultState = {
   events: [],
   albumUnlocked: [0],
   inventory: [],
+}
+
+const imageGenerationService = {
+  async generateBabyPreview({ parentPhoto, gender, personality }) {
+    // Future integration point: replace this placeholder with OpenAI Images,
+    // Firebase Storage upload, or another image generation provider.
+    await new Promise((resolve) => setTimeout(resolve, 2800))
+    return {
+      imageUrl: '',
+      provider: 'placeholder',
+      promptContext: { hasParentPhoto: Boolean(parentPhoto), gender, personality },
+    }
+  },
 }
 
 const eventPool = [
@@ -77,7 +91,9 @@ function loadState() {
       return defaultState
     }
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? { ...defaultState, ...JSON.parse(raw) } : defaultState
+    if (!raw) return defaultState
+    const parsed = JSON.parse(raw)
+    return { ...defaultState, ...parsed, child: { ...defaultState.child, ...parsed.child } }
   } catch {
     return defaultState
   }
@@ -125,6 +141,31 @@ function App() {
 
   const updateChild = (patch) => {
     setState((current) => ({ ...current, child: { ...current.child, ...patch } }))
+  }
+
+  const beginGestation = (photo) => {
+    setState((current) => ({
+      ...current,
+      stage: 'gestating',
+      child: { ...current.child, photo, babyImage: '' },
+    }))
+  }
+
+  const completeGestation = async () => {
+    const result = await imageGenerationService.generateBabyPreview({
+      parentPhoto: child.photo,
+      gender: child.gender,
+      personality: child.personality,
+    })
+    setState((current) => ({
+      ...current,
+      stage: 'babyPreview',
+      child: { ...current.child, babyImage: result.imageUrl },
+    }))
+  }
+
+  const continueToName = () => {
+    setState((current) => ({ ...current, stage: 'name' }))
   }
 
   const startBirth = () => {
@@ -204,7 +245,19 @@ function App() {
   }
 
   if (state.stage === 'create') {
-    return <Create child={child} persona={persona} updateChild={updateChild} onBirth={startBirth} />
+    return <Create child={child} persona={persona} updateChild={updateChild} onPhotoReady={beginGestation} />
+  }
+
+  if (state.stage === 'gestating') {
+    return <Gestating child={child} onComplete={completeGestation} />
+  }
+
+  if (state.stage === 'babyPreview') {
+    return <BabyPreview child={child} onContinue={continueToName} />
+  }
+
+  if (state.stage === 'name') {
+    return <NameChild child={child} updateChild={updateChild} onBirth={startBirth} />
   }
 
   if (state.stage === 'birth') {
@@ -249,12 +302,12 @@ function Splash({ onStart }) {
   )
 }
 
-function Create({ child, persona, updateChild, onBirth }) {
+function Create({ child, persona, updateChild, onPhotoReady }) {
   const handlePhoto = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = () => updateChild({ photo: reader.result })
+    reader.onload = () => onPhotoReady(reader.result)
     reader.readAsDataURL(file)
   }
 
@@ -302,6 +355,89 @@ function Create({ child, persona, updateChild, onBirth }) {
           </div>
         </ControlGroup>
 
+        <div className="rounded-[28px] bg-[#342b25] p-5 text-white shadow-glow">
+          <p className="text-sm text-white/70">当前生命倾向</p>
+          <p className="mt-2 text-2xl font-black">{persona.name}型 ECHO</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/78">先上传你的自拍。ECHO 会先孕育出一个宝宝影像，然后你再为他取名字。</p>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+function Gestating({ child, onComplete }) {
+  const didStart = useRef(false)
+
+  useEffect(() => {
+    if (didStart.current) return
+    didStart.current = true
+    onComplete()
+  }, [])
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#1f2928] px-6 py-10 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(255,184,117,0.55),transparent_33%),linear-gradient(180deg,rgba(31,41,40,0.1),rgba(31,41,40,0.96))]" />
+      <section className="relative flex min-h-[calc(100vh-5rem)] flex-col items-center justify-center text-center">
+        <div className="relative flex h-56 w-56 items-center justify-center">
+          <div className="absolute inset-0 animate-pulseSoft rounded-full border border-[#ffd3a8]/40" />
+          <div className="absolute inset-8 animate-float rounded-full border border-white/30" />
+          <div className="absolute inset-16 rounded-full bg-[#ffcf9f]/20 blur-xl" />
+          <div className="flex h-28 w-28 animate-born items-center justify-center overflow-hidden rounded-full bg-white/12 shadow-[0_0_80px_rgba(255,184,117,0.75)] backdrop-blur-xl">
+            {child.photo ? <img src={child.photo} alt="" className="h-full w-full scale-125 object-cover opacity-70 blur-[1px]" /> : <Baby className="h-12 w-12 text-[#ffd3a8]" />}
+          </div>
+        </div>
+        <p className="mt-8 text-sm font-semibold text-[#ffd3a8]">LIFE SIGNAL FORMING</p>
+        <h1 className="mt-3 text-3xl font-black">正在孕育新生命...</h1>
+        <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/72">你的影像正在变成第一段遗传记忆。请等他慢慢出现。</p>
+      </section>
+    </main>
+  )
+}
+
+function BabyPreview({ child, onContinue }) {
+  return (
+    <main className="min-h-screen bg-[#fff8ef] px-5 py-6 text-[#342b25]">
+      <TopLabel title="第一次看见他" subtitle="ECHO 的第一张生命影像" />
+      <section className="mt-6 overflow-hidden rounded-[34px] bg-[#342b25] p-4 text-white shadow-glow">
+        <div className="relative aspect-[4/5] overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_50%_36%,#fff2d8,rgba(255,184,117,0.45)_34%,rgba(47,139,135,0.34)_72%)]">
+          {child.babyImage ? (
+            <img src={child.babyImage} alt="AI generated baby preview" className="h-full w-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="relative flex h-36 w-36 items-center justify-center rounded-full bg-white/72 shadow-[0_0_70px_rgba(255,255,255,0.68)]">
+                <div className="absolute -inset-8 rounded-full border border-white/50" />
+                <Baby className="h-16 w-16 text-[#ff8f68]" />
+              </div>
+              <p className="mt-8 rounded-full bg-white/18 px-4 py-2 text-xs font-bold text-white backdrop-blur">AI Baby Image Placeholder</p>
+            </div>
+          )}
+          {child.photo && <img src={child.photo} alt="" className="absolute bottom-4 right-4 h-16 w-16 rounded-[20px] border-2 border-white/80 object-cover shadow-soft" />}
+        </div>
+        <div className="px-2 py-5 text-center">
+          <p className="text-2xl font-black leading-snug">他继承了你的一部分模样。</p>
+          <p className="mt-3 text-lg font-semibold text-[#ffd3a8]">你愿意陪他长大吗？</p>
+        </div>
+      </section>
+      <button onClick={onContinue} className="mt-6 flex w-full items-center justify-center gap-2 rounded-[24px] bg-[#ff8f68] px-5 py-4 text-base font-black text-white shadow-glow">
+        <Heart className="h-5 w-5" />
+        我愿意，继续取名字
+      </button>
+    </main>
+  )
+}
+
+function NameChild({ child, updateChild, onBirth }) {
+  return (
+    <main className="min-h-screen bg-[#fff8ef] px-5 py-6 text-[#342b25]">
+      <TopLabel title="给他一个名字" subtitle="你已经见过他，现在为他留下第一个称呼" />
+      <div className="mt-6 space-y-5">
+        <div className="rounded-[32px] bg-white p-4 shadow-soft">
+          <div className="relative mx-auto flex h-40 w-40 items-center justify-center overflow-hidden rounded-[34px] bg-[#fff0df]">
+            <Baby className="h-16 w-16 text-[#ff8f68]" />
+            {child.photo && <img src={child.photo} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20 blur-sm" />}
+          </div>
+        </div>
         <div className="rounded-[28px] bg-white p-4 shadow-soft">
           <p className="mb-3 text-sm font-bold text-[#6b5c4e]">孩子名字</p>
           <input
@@ -311,14 +447,7 @@ function Create({ child, persona, updateChild, onBirth }) {
             className="w-full rounded-[18px] bg-[#fff5ea] px-4 py-4 text-lg font-bold outline-none ring-1 ring-[#ead9c9] focus:ring-2 focus:ring-[#2f8b87]"
           />
         </div>
-
-        <div className="rounded-[28px] bg-[#342b25] p-5 text-white shadow-glow">
-          <p className="text-sm text-white/70">当前生命倾向</p>
-          <p className="mt-2 text-2xl font-black">{persona.name}型 ECHO</p>
-          <p className="mt-2 text-sm leading-relaxed text-white/78">他会根据年龄、事件和你的陪伴逐渐改变，不会永远停留在出生设定。</p>
-        </div>
-
-        <button onClick={onBirth} className="flex w-full items-center justify-center gap-2 rounded-[24px] bg-[#ff8f68] px-5 py-4 text-base font-black text-white shadow-glow">
+        <button onClick={onBirth} className="flex w-full items-center justify-center gap-2 rounded-[24px] bg-[#342b25] px-5 py-4 text-base font-black text-white shadow-glow">
           <Wand2 className="h-5 w-5" />
           让 ECHO 诞生
         </button>
