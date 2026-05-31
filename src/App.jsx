@@ -2,6 +2,7 @@ import {
   Baby,
   BookOpen,
   Camera,
+  FileText,
   Heart,
   Home,
   MessageCircle,
@@ -15,6 +16,8 @@ import {
 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import roomImage from './assets/echo-room.png'
+import GrowthAlbum from './components/GrowthAlbum.jsx'
+import GrowthPreviewCard from './components/GrowthPreviewCard.jsx'
 
 const STORAGE_KEY = 'project-echo-beta-state'
 
@@ -43,7 +46,9 @@ const defaultState = {
   },
   messages: [],
   events: [],
-  albumUnlocked: [0],
+  albumEntries: [],
+  lastSeenUnlockedAlbumIds: [],
+  newAlbumMoment: null,
   inventory: [],
 }
 
@@ -75,13 +80,39 @@ const shopItems = [
   { id: 'camp', name: '月球夏令营', type: '夏令营', price: 120, effect: '+梦想' },
 ]
 
-const albumStages = [
-  { age: 0, label: '婴儿', note: '第一束呼吸，像晨光。' },
-  { age: 5, label: '5岁', note: '开始把世界叫成游乐场。' },
-  { age: 12, label: '12岁', note: '有了秘密，也有了自己的星图。' },
-  { age: 18, label: '18岁', note: '第一次认真谈论远方。' },
-  { age: 24, label: '成人', note: '把你给的爱，带进更大的生活。' },
+const albumMilestones = [
+  { id: 'newborn', emoji: '👶', stage: '新生儿', title: '今天，你把我带到了这个世界。', unlockDay: 1, imageUrl: '' },
+  { id: 'toddler', emoji: '🧒', stage: '幼儿', title: '我开始认识这个世界了。', unlockDay: 7, imageUrl: '' },
+  { id: 'school', emoji: '🎒', stage: '第一次上学', title: '今天我第一次去学校。', unlockDay: 30, imageUrl: '' },
+  { id: 'teen', emoji: '🧑', stage: '少年', title: '我开始有自己的想法了。', unlockDay: 90, imageUrl: '' },
+  { id: 'graduation', emoji: '🧑‍🎓', stage: '毕业', title: '谢谢你一直陪伴我。', unlockDay: 180, imageUrl: '' },
+  { id: 'adult', emoji: '👨', stage: '成人', title: '现在，换我关心你。', unlockDay: 365, imageUrl: '' },
 ]
+
+function createAlbumEntries() {
+  return albumMilestones.map((entry) => ({ ...entry, isUnlocked: entry.unlockDay === 1 }))
+}
+
+function getGrowthDay(createdAt) {
+  if (!createdAt) return 1
+  const elapsed = Date.now() - new Date(createdAt).getTime()
+  return Math.max(1, Math.floor(elapsed / 86400000) + 1)
+}
+
+function hydrateAlbumEntries(savedEntries = [], currentDay = 1) {
+  return albumMilestones.map((milestone, index) => {
+    const saved = savedEntries.find((entry) => entry.id === milestone.id) || {}
+    const isUnlocked = currentDay >= milestone.unlockDay
+    return {
+      ...milestone,
+      imageUrl: saved.imageUrl || milestone.imageUrl,
+      isUnlocked,
+      currentDay,
+      previousUnlockDay: albumMilestones[index - 1]?.unlockDay ?? 1,
+      unlockLabel: isUnlocked ? `Day ${milestone.unlockDay} 已解锁` : `Day ${milestone.unlockDay} 解锁`,
+    }
+  })
+}
 
 function loadState() {
   try {
@@ -93,7 +124,15 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return defaultState
     const parsed = JSON.parse(raw)
-    return { ...defaultState, ...parsed, child: { ...defaultState.child, ...parsed.child } }
+    const child = { ...defaultState.child, ...parsed.child }
+    const currentDay = getGrowthDay(child.createdAt)
+    return {
+      ...defaultState,
+      ...parsed,
+      child,
+      albumEntries: hydrateAlbumEntries(parsed.albumEntries, currentDay),
+      lastSeenUnlockedAlbumIds: parsed.lastSeenUnlockedAlbumIds || [],
+    }
   } catch {
     return defaultState
   }
@@ -134,10 +173,36 @@ function App() {
   const [state, setState] = useState(loadState)
   const { child } = state
   const persona = useMemo(() => getPersonality(child), [child])
+  const currentGrowthDay = useMemo(() => getGrowthDay(child.createdAt), [child.createdAt])
+  const albumEntries = useMemo(() => hydrateAlbumEntries(state.albumEntries, currentGrowthDay), [state.albumEntries, currentGrowthDay])
+  const nextAlbumEntry = albumEntries.find((entry) => !entry.isUnlocked)
+
+  useEffect(() => {
+    if (!child.createdAt) return
+    const unlockedIds = albumEntries.filter((entry) => entry.isUnlocked).map((entry) => entry.id)
+    const unseen = unlockedIds.filter((id) => !state.lastSeenUnlockedAlbumIds.includes(id) && id !== 'newborn')
+    const hasAlbumDiff = JSON.stringify(state.albumEntries) !== JSON.stringify(albumEntries)
+    if (!hasAlbumDiff && unseen.length === 0) return
+
+    setState((current) => ({
+      ...current,
+      albumEntries,
+      newAlbumMoment: unseen.length ? albumEntries.find((entry) => entry.id === unseen[0]) : current.newAlbumMoment,
+    }))
+  }, [child.createdAt, currentGrowthDay])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
+
+  const openAlbum = () => {
+    setState((current) => ({
+      ...current,
+      activeTab: 'album',
+      newAlbumMoment: null,
+      lastSeenUnlockedAlbumIds: albumEntries.filter((entry) => entry.isUnlocked).map((entry) => entry.id),
+    }))
+  }
 
   const updateChild = (patch) => {
     setState((current) => ({ ...current, child: { ...current.child, ...patch } }))
@@ -173,7 +238,9 @@ function App() {
     setState((current) => ({
       ...current,
       stage: 'birth',
-      child: { ...current.child, name: firstName },
+      child: { ...current.child, name: firstName, createdAt: current.child.createdAt || new Date().toISOString() },
+      albumEntries: hydrateAlbumEntries(current.albumEntries, 1),
+      lastSeenUnlockedAlbumIds: ['newborn'],
       messages: [
         {
           from: 'child',
@@ -210,7 +277,6 @@ function App() {
     setState((current) => {
       const event = eventPool[Math.floor(Math.random() * eventPool.length)]
       const nextAge = Math.min(24, current.child.age + (current.events.length % 2 === 0 ? 1 : 0))
-      const unlocked = albumStages.filter((stage) => stage.age <= nextAge).map((stage) => stage.age)
       return {
         ...current,
         child: {
@@ -221,7 +287,6 @@ function App() {
           worry: event.tag === '失败' ? '担心自己不够好' : current.child.worry,
         },
         events: [{ ...event, id: crypto.randomUUID(), date: new Date().toLocaleDateString('zh-CN') }, ...current.events],
-        albumUnlocked: Array.from(new Set([...current.albumUnlocked, ...unlocked])),
       }
     })
   }
@@ -266,12 +331,13 @@ function App() {
 
   return (
     <Shell activeTab={state.activeTab} setActiveTab={(activeTab) => setState((current) => ({ ...current, activeTab }))}>
-      {state.activeTab === 'home' && <HomeView child={child} persona={persona} triggerEvent={triggerEvent} latestEvent={state.events[0]} />}
+      {state.activeTab === 'home' && <HomeView child={child} persona={persona} triggerEvent={triggerEvent} latestEvent={state.events[0]} nextAlbumEntry={nextAlbumEntry} onOpenAlbum={openAlbum} />}
       {state.activeTab === 'chat' && <ChatView child={child} messages={state.messages} sendMessage={sendMessage} />}
       {state.activeTab === 'events' && <EventsView events={state.events} triggerEvent={triggerEvent} />}
-      {state.activeTab === 'album' && <AlbumView child={child} unlocked={state.albumUnlocked} />}
+      {state.activeTab === 'album' && <GrowthAlbum child={child} entries={albumEntries} />}
       {state.activeTab === 'shop' && <ShopView inventory={state.inventory} buyItem={buyItem} />}
       {state.activeTab === 'report' && <ReportView child={child} persona={persona} />}
+      {state.newAlbumMoment && <GrowthMomentModal child={child} entry={state.newAlbumMoment} onView={openAlbum} />}
     </Shell>
   )
 }
@@ -485,9 +551,9 @@ function Shell({ children, activeTab, setActiveTab }) {
     ['home', Home],
     ['chat', MessageCircle],
     ['events', Star],
-    ['album', Camera],
+    ['album', BookOpen],
     ['shop', ShoppingBag],
-    ['report', BookOpen],
+    ['report', FileText],
   ]
   return (
     <main className="mx-auto min-h-screen max-w-md bg-[#fff8ef] pb-24 text-[#342b25] shadow-[0_0_80px_rgba(80,67,55,0.12)]">
@@ -510,7 +576,7 @@ function Shell({ children, activeTab, setActiveTab }) {
   )
 }
 
-function HomeView({ child, persona, triggerEvent, latestEvent }) {
+function HomeView({ child, persona, triggerEvent, latestEvent, nextAlbumEntry, onOpenAlbum }) {
   return (
     <section className="px-5 py-6">
       <TopLabel title={`${child.name} 的房间`} subtitle={`${child.age} 岁 · ${persona.name}型 · 正在成长`} />
@@ -534,6 +600,7 @@ function HomeView({ child, persona, triggerEvent, latestEvent }) {
         <Sparkles className="h-5 w-5" />
         触发今日事件
       </button>
+      <GrowthPreviewCard nextEntry={nextAlbumEntry} onOpen={onOpenAlbum} />
       {latestEvent && <EventCard event={latestEvent} />}
     </section>
   )
@@ -645,6 +712,28 @@ function ReportView({ child, persona }) {
         <ReportRow icon={Home} label="亲密度" value={`${child.intimacy}/100，需要持续陪伴`} />
       </div>
     </section>
+  )
+}
+
+function GrowthMomentModal({ child, entry, onView }) {
+  return (
+    <div className="fixed inset-0 z-40 mx-auto flex max-w-md items-center justify-center bg-[#1f2928]/88 px-6 text-white backdrop-blur-xl">
+      <div className="w-full text-center">
+        <div className="mx-auto flex h-28 w-28 animate-born items-center justify-center rounded-full bg-[#fff1d8] text-6xl shadow-[0_0_80px_rgba(255,203,150,0.85)]">
+          {entry.emoji}
+        </div>
+        <p className="mt-8 text-sm font-black uppercase text-[#ffd3a8]">Growth Moment</p>
+        <h2 className="mt-2 text-4xl font-black">成长时刻</h2>
+        <p className="mx-auto mt-5 max-w-xs text-xl font-semibold leading-relaxed">
+          {child.name || 'ECHO'} 长大了一些。
+          <br />
+          你想看看他的新模样吗？
+        </p>
+        <button onClick={onView} className="mt-9 w-full rounded-[24px] bg-white px-6 py-4 text-base font-black text-[#342b25] shadow-glow">
+          查看照片
+        </button>
+      </div>
+    </div>
   )
 }
 
