@@ -100,8 +100,9 @@ function getGrowthDay(createdAt) {
 }
 
 function hydrateAlbumEntries(savedEntries = [], currentDay = 1) {
+  const safeSavedEntries = Array.isArray(savedEntries) ? savedEntries : []
   return albumMilestones.map((milestone, index) => {
-    const saved = savedEntries.find((entry) => entry.id === milestone.id) || {}
+    const saved = safeSavedEntries.find((entry) => entry.id === milestone.id) || {}
     const isUnlocked = currentDay >= milestone.unlockDay
     return {
       ...milestone,
@@ -131,7 +132,7 @@ function loadState() {
       ...parsed,
       child,
       albumEntries: hydrateAlbumEntries(parsed.albumEntries, currentDay),
-      lastSeenUnlockedAlbumIds: parsed.lastSeenUnlockedAlbumIds || [],
+      lastSeenUnlockedAlbumIds: Array.isArray(parsed.lastSeenUnlockedAlbumIds) ? parsed.lastSeenUnlockedAlbumIds : [],
     }
   } catch {
     return defaultState
@@ -175,12 +176,13 @@ function App() {
   const persona = useMemo(() => getPersonality(child), [child])
   const currentGrowthDay = useMemo(() => getGrowthDay(child.createdAt), [child.createdAt])
   const albumEntries = useMemo(() => hydrateAlbumEntries(state.albumEntries, currentGrowthDay), [state.albumEntries, currentGrowthDay])
+  const seenAlbumIds = Array.isArray(state.lastSeenUnlockedAlbumIds) ? state.lastSeenUnlockedAlbumIds : []
   const nextAlbumEntry = albumEntries.find((entry) => !entry.isUnlocked)
 
   useEffect(() => {
     if (!child.createdAt) return
     const unlockedIds = albumEntries.filter((entry) => entry.isUnlocked).map((entry) => entry.id)
-    const unseen = unlockedIds.filter((id) => !state.lastSeenUnlockedAlbumIds.includes(id) && id !== 'newborn')
+    const unseen = unlockedIds.filter((id) => !seenAlbumIds.includes(id) && id !== 'newborn')
     const hasAlbumDiff = JSON.stringify(state.albumEntries) !== JSON.stringify(albumEntries)
     if (!hasAlbumDiff && unseen.length === 0) return
 
@@ -239,7 +241,7 @@ function App() {
       ...current,
       stage: 'birth',
       child: { ...current.child, name: firstName, createdAt: current.child.createdAt || new Date().toISOString() },
-      albumEntries: hydrateAlbumEntries(current.albumEntries, 1),
+      albumEntries: hydrateAlbumEntries(createAlbumEntries(), 1),
       lastSeenUnlockedAlbumIds: ['newborn'],
       messages: [
         {
