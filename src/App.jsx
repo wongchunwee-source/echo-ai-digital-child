@@ -12,6 +12,8 @@ import {
   ShoppingBag,
   Sparkles,
   Star,
+  UserRound,
+  Users,
   Wand2,
 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -30,7 +32,8 @@ const personalities = [
 ]
 
 const defaultState = {
-  stage: 'splash',
+  stage: 'familyMode',
+  familyMode: '',
   activeTab: 'home',
   child: {
     name: '',
@@ -53,7 +56,7 @@ const defaultState = {
   inventory: [],
 }
 
-const validStages = new Set(['splash', 'create', 'gestating', 'babyPreview', 'name', 'birth', 'app'])
+const validStages = new Set(['familyMode', 'coupleSoon', 'splash', 'create', 'gestating', 'babyPreview', 'name', 'birth', 'app'])
 const validTabs = new Set(['home', 'chat', 'events', 'album', 'shop', 'report'])
 
 const imageGenerationService = {
@@ -158,10 +161,14 @@ function loadState() {
     const parsed = JSON.parse(raw)
     const child = { ...defaultState.child, ...parsed.child }
     const currentDay = getGrowthDay(child.createdAt)
+    const savedFamilyMode = parsed.familyMode === 'single' || parsed.familyMode === 'couple' ? parsed.familyMode : defaultState.familyMode
+    const savedStage = validStages.has(parsed.stage) ? parsed.stage : defaultState.stage
+    const migratedStage = !savedFamilyMode && (savedStage === 'splash' || savedStage === 'create') ? 'familyMode' : savedStage
     return {
       ...defaultState,
       ...parsed,
-      stage: validStages.has(parsed.stage) ? parsed.stage : defaultState.stage,
+      stage: migratedStage,
+      familyMode: savedFamilyMode,
       activeTab: validTabs.has(parsed.activeTab) ? parsed.activeTab : defaultState.activeTab,
       child,
       messages: Array.isArray(parsed.messages) ? parsed.messages : [],
@@ -280,6 +287,14 @@ function App() {
     setState((current) => ({ ...current, child: { ...current.child, ...patch } }))
   }
 
+  const chooseFamilyMode = (familyMode) => {
+    setState((current) => ({
+      ...current,
+      familyMode,
+      stage: familyMode === 'single' ? 'create' : 'coupleSoon',
+    }))
+  }
+
   const beginGestation = (photo) => {
     setState((current) => ({
       ...current,
@@ -390,8 +405,16 @@ function App() {
     }))
   }
 
+  if (state.stage === 'familyMode') {
+    return <FamilyModeSelection onSelect={chooseFamilyMode} />
+  }
+
+  if (state.stage === 'coupleSoon') {
+    return <CoupleComingSoon onBack={() => setState((current) => ({ ...current, familyMode: '', stage: 'familyMode' }))} />
+  }
+
   if (state.stage === 'splash') {
-    return <Splash onStart={() => setState((current) => ({ ...current, stage: 'create' }))} />
+    return <Splash onStart={() => setState((current) => ({ ...current, stage: 'familyMode' }))} />
   }
 
   if (state.stage === 'create') {
@@ -519,6 +542,90 @@ function RootApp() {
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
+  )
+}
+
+function FamilyModeSelection({ onSelect }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#1f2928] px-5 py-8 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_22%,rgba(255,184,117,0.42),transparent_30%),radial-gradient(circle_at_18%_68%,rgba(47,139,135,0.32),transparent_28%),linear-gradient(180deg,rgba(31,41,40,0.18),rgba(31,41,40,0.98)_72%)]" />
+      <section className="relative mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col">
+        <div className="flex items-center justify-between">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/12 shadow-soft backdrop-blur">
+            <Orbit className="h-5 w-5 text-[#ffd3a8]" />
+          </div>
+          <span className="rounded-full border border-white/14 bg-white/10 px-3 py-1 text-xs font-black text-white/78 backdrop-blur">Family Beta</span>
+        </div>
+
+        <header className="pt-10">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#ffd3a8]">Project ECHO</p>
+          <h1 className="mt-4 text-5xl font-black leading-[0.95] tracking-normal">欢迎来到 ECHO</h1>
+          <p className="mt-5 max-w-xs whitespace-pre-line text-xl font-semibold leading-relaxed text-white/78">
+            创造一个生命，
+            然后陪他慢慢长大。
+          </p>
+        </header>
+
+        <div className="mt-8 space-y-4 pb-6">
+          <button onClick={() => onSelect('single')} className="group w-full overflow-hidden rounded-[32px] border border-white/16 bg-white/95 p-5 text-left text-[#342b25] shadow-glow">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[#fff0df] text-[#ff8f68]">
+                <UserRound className="h-7 w-7" />
+              </div>
+              <span className="rounded-full bg-[#e9f5f2] px-3 py-1 text-xs font-black text-[#2f8b87]">可体验</span>
+            </div>
+            <h2 className="mt-5 text-2xl font-black">单人模式</h2>
+            <p className="mt-2 text-base font-bold text-[#5d5046]">独自迎接一个新生命</p>
+            <p className="mt-4 text-sm leading-relaxed text-[#7a6a5c]">
+              适合单身人士、独居用户、喜欢陪伴与成长的人。
+            </p>
+            <div className="mt-5 flex items-center justify-center rounded-[22px] bg-[#342b25] px-5 py-4 text-base font-black text-white transition group-active:scale-[0.99]">
+              开始单人旅程
+            </div>
+          </button>
+
+          <button onClick={() => onSelect('couple')} className="w-full overflow-hidden rounded-[32px] border border-white/16 bg-white/10 p-5 text-left text-white shadow-soft backdrop-blur">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-white/12 text-[#ffd3a8]">
+                <Users className="h-7 w-7" />
+              </div>
+              <span className="rounded-full bg-white/14 px-3 py-1 text-xs font-black text-white/72">Coming Soon</span>
+            </div>
+            <h2 className="mt-5 text-2xl font-black">双人模式</h2>
+            <p className="mt-2 text-base font-bold text-white/82">与另一位重要的人共同迎接新生命</p>
+            <p className="mt-4 text-sm leading-relaxed text-white/62">
+              适合情侣、夫妻、异地恋。未来会支持共同陪伴、共同决策与双人记忆。
+            </p>
+            <div className="mt-5 flex items-center justify-center rounded-[22px] bg-white/14 px-5 py-4 text-base font-black text-white/72">
+              即将开放
+            </div>
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function CoupleComingSoon({ onBack }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#1f2928] px-6 py-10 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(255,184,117,0.42),transparent_32%),linear-gradient(180deg,rgba(31,41,40,0.16),rgba(31,41,40,0.96))]" />
+      <section className="relative flex min-h-[calc(100vh-5rem)] flex-col items-center justify-center text-center">
+        <div className="flex h-28 w-28 items-center justify-center rounded-full bg-white/12 text-[#ffd3a8] shadow-glow backdrop-blur">
+          <Users className="h-12 w-12" />
+        </div>
+        <p className="mt-8 text-sm font-black uppercase text-[#ffd3a8]">Couple Mode</p>
+        <h1 className="mt-3 text-4xl font-black">共同抚养功能开发中</h1>
+        <p className="mt-5 max-w-xs text-lg font-semibold leading-relaxed text-white/72">
+          敬请期待。未来 ECHO 会成为两个人共同成长的数字家庭。
+        </p>
+        <button onClick={onBack} className="mt-9 w-full max-w-xs rounded-[24px] bg-white px-6 py-4 text-base font-black text-[#342b25] shadow-glow">
+          返回选择模式
+        </button>
+      </section>
+    </main>
   )
 }
 
