@@ -914,7 +914,7 @@ function BabyPreview({ child, onContinue }) {
 
 function GenesisRitual({ child, onComplete }) {
   const didStart = useRef(false)
-  const [soundOn, setSoundOn] = useState(true)
+  const [soundOn, setSoundOn] = useState(false)
   const [phase, setPhase] = useState(0)
   const heartbeatStage = phase >= 2 ? 2 : 1
   const lines = [
@@ -926,6 +926,25 @@ function GenesisRitual({ child, onComplete }) {
   ]
 
   useGenesisAudio(soundOn, heartbeatStage)
+
+  const toggleSound = () => {
+    if (!soundOn) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext
+      if (AudioContext) {
+        const context = new AudioContext()
+        context.resume?.().catch(() => {})
+        const gain = context.createGain()
+        const oscillator = context.createOscillator()
+        gain.gain.value = 0.001
+        oscillator.connect(gain)
+        gain.connect(context.destination)
+        oscillator.start()
+        oscillator.stop(context.currentTime + 0.04)
+        window.setTimeout(() => context.close(), 120)
+      }
+    }
+    setSoundOn((value) => !value)
+  }
 
   useEffect(() => {
     if (didStart.current) return
@@ -946,11 +965,12 @@ function GenesisRitual({ child, onComplete }) {
       <img src={roomImage} alt="" className="absolute inset-0 h-full w-full scale-105 object-cover opacity-18" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(255,184,117,0.42),transparent_30%),radial-gradient(circle_at_18%_72%,rgba(47,139,135,0.32),transparent_24%),linear-gradient(180deg,rgba(16,25,24,0.48),rgba(16,25,24,0.98)_76%)]" />
       <button
-        onClick={() => setSoundOn((value) => !value)}
-        className="absolute right-5 top-6 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-white/10 text-white backdrop-blur"
+        onClick={toggleSound}
+        className={`absolute right-5 top-6 z-20 flex items-center justify-center gap-2 rounded-full border border-white/14 bg-white/10 text-white backdrop-blur ${soundOn ? 'h-11 w-11' : 'px-4 py-3 text-xs font-black'}`}
         aria-label={soundOn ? '关闭声音' : '开启声音'}
       >
-        {soundOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+        {soundOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-4 w-4" />}
+        {!soundOn && <span>开启声音</span>}
       </button>
       <section className="relative flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center text-center">
         <div className="relative flex h-[21rem] w-[21rem] max-w-[92vw] items-center justify-center">
