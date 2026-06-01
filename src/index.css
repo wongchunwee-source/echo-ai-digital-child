@@ -54,6 +54,10 @@ textarea {
   transform-origin: center;
 }
 
+.first-home-light {
+  animation: first-home-light 4.2s ease-out both;
+}
+
 @keyframes genesis-particle {
   0%,
   100% {
@@ -101,5 +105,16 @@ textarea {
   94% {
     opacity: 1;
     transform: scaleY(1);
+  }
+}
+
+@keyframes first-home-light {
+  0% {
+    opacity: 0.12;
+    filter: brightness(0.55) saturate(0.78);
+  }
+  100% {
+    opacity: 0.72;
+    filter: brightness(1.05) saturate(1.04);
   }
 }

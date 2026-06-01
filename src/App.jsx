@@ -65,7 +65,7 @@ const defaultState = {
   inventory: [],
 }
 
-const validStages = new Set(['familyMode', 'parentIdentity', 'babyGenderChoice', 'babyGenderLocked', 'coupleSoon', 'splash', 'create', 'gestating', 'babyPreview', 'name', 'birth', 'app'])
+const validStages = new Set(['familyMode', 'parentIdentity', 'babyGenderChoice', 'babyGenderLocked', 'coupleSoon', 'splash', 'create', 'gestating', 'babyPreview', 'name', 'birth', 'firstHome', 'app'])
 const validTabs = new Set(['home', 'chat', 'events', 'album', 'shop', 'report'])
 
 const imageGenerationService = {
@@ -580,7 +580,7 @@ function App() {
       const safeAlbumEntries = hydrateAlbumEntries(current.albumEntries?.length ? current.albumEntries : createAlbumEntries(), growthDay)
       return {
         ...current,
-        stage: 'app',
+        stage: 'firstHome',
         activeTab: 'home',
         child: {
           ...current.child,
@@ -593,6 +593,14 @@ function App() {
         newAlbumMoment: null,
       }
     })
+  }
+
+  const finishFirstHome = () => {
+    setState((current) => ({
+      ...current,
+      stage: 'app',
+      activeTab: 'home',
+    }))
   }
 
   const sendMessage = (text) => {
@@ -687,6 +695,10 @@ function App() {
 
   if (state.stage === 'birth') {
     return <GenesisBirth child={child} parentGender={state.parentGender} onEnter={enterHome} />
+  }
+
+  if (state.stage === 'firstHome') {
+    return <FirstHomeMoment child={child} parentGender={state.parentGender} onContinue={finishFirstHome} />
   }
 
   return (
@@ -1425,6 +1437,73 @@ function GenesisBirth({ child, parentGender, onEnter }) {
         >
           <Heart className="h-5 w-5 fill-[#ff8f68] text-[#ff8f68]" />
           抱他回家
+        </button>
+      </section>
+    </main>
+  )
+}
+
+function FirstHomeMoment({ child, parentGender, onContinue }) {
+  const [showContinue, setShowContinue] = useState(false)
+  const parentRole = getParentRole(parentGender)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowContinue(true), 3200)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#101918] px-5 py-7 text-white">
+      <img src={roomImage} alt="" className="first-home-light absolute inset-0 h-full w-full scale-105 object-cover" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(16,25,24,0.18),rgba(16,25,24,0.82)_72%),radial-gradient(circle_at_50%_28%,rgba(255,214,168,0.34),transparent_34%)]" />
+      <section className="relative mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-md flex-col justify-end pb-4 pt-8">
+        <div className="mb-auto text-center">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#ffd3a8]">First Home</p>
+          <h1 className="mt-4 text-5xl font-black leading-[0.95]">我在这里。</h1>
+          <p className="mx-auto mt-4 max-w-xs text-base font-semibold leading-relaxed text-white/72">
+            房间慢慢亮起来，{child.name || 'ECHO'} 第一次回到了属于你们的家。
+          </p>
+        </div>
+
+        <div className="mx-auto mb-8 mt-8 flex flex-col items-center">
+          <div className="relative h-44 w-64 rounded-[42px] bg-[#fff1d8] shadow-[0_0_90px_rgba(255,203,150,0.7)]">
+            <div className="absolute inset-x-8 bottom-7 h-20 rounded-[40px] bg-white/74 shadow-[inset_0_-12px_30px_rgba(255,143,104,0.12)]" />
+            <div className="genesis-breathe absolute left-1/2 top-8 flex h-24 w-24 -translate-x-1/2 items-center justify-center rounded-full bg-[#ffe1c7] shadow-soft">
+              <Baby className="h-10 w-10 text-[#ff8f68]" />
+            </div>
+            <div className="absolute inset-x-6 bottom-5 h-5 rounded-full bg-[#9b7b62]/18 blur-sm" />
+          </div>
+        </div>
+
+        <div className="rounded-[34px] border border-white/14 bg-white/12 p-4 shadow-glow backdrop-blur-xl">
+          <div className="overflow-hidden rounded-[28px] bg-[#fff8ef] text-[#342b25]">
+            <div className="relative h-44 bg-[radial-gradient(circle_at_50%_35%,#fff4df,rgba(255,184,117,0.44)_42%,rgba(47,139,135,0.22)_78%)]">
+              {child.photo && <img src={child.photo} alt="" className="absolute inset-0 h-full w-full object-cover opacity-12 blur-md saturate-75" />}
+              <div className="absolute inset-0 flex items-center justify-center gap-4">
+                <div className="flex h-20 w-20 items-center justify-center rounded-[28px] bg-white/70 shadow-soft">
+                  {parentRole === '妈妈' ? <Heart className="h-9 w-9 fill-[#ff8f68] text-[#ff8f68]" /> : <UserRound className="h-9 w-9 text-[#2f8b87]" />}
+                </div>
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#fff1d8] shadow-[0_0_60px_rgba(255,203,150,0.76)]">
+                  <Baby className="h-11 w-11 text-[#ff8f68]" />
+                </div>
+              </div>
+              <div className="absolute left-4 top-4 rounded-full bg-white/70 px-3 py-1 text-xs font-black text-[#8a7867] backdrop-blur">第一张家庭照片</div>
+            </div>
+            <div className="p-5">
+              <p className="text-xl font-black">今天，我们成为了一家人。</p>
+              <p className="mt-2 text-sm font-semibold leading-relaxed text-[#7a6a5c]">
+                {parentRole}把{child.name || 'ECHO'}抱回了家，这一刻会留在成长相册里。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onContinue}
+          className={`mt-6 flex w-full items-center justify-center gap-2 rounded-[24px] bg-white px-6 py-4 text-base font-black text-[#342b25] shadow-glow transition duration-700 ${showContinue ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}
+        >
+          <Home className="h-5 w-5" />
+          进入我们的家
         </button>
       </section>
     </main>
