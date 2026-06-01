@@ -36,3 +36,70 @@ textarea {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+.genesis-particle {
+  animation: genesis-particle 4.8s ease-in-out infinite;
+}
+
+.genesis-heartbeat {
+  animation: genesis-heartbeat 1.15s ease-in-out infinite;
+}
+
+.genesis-breathe {
+  animation: genesis-breathe 4.2s ease-in-out infinite;
+}
+
+.genesis-blink {
+  animation: genesis-blink 5.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes genesis-particle {
+  0%,
+  100% {
+    opacity: 0.24;
+    transform: translate3d(0, 0, 0) scale(0.72);
+  }
+  50% {
+    opacity: 1;
+    transform: translate3d(-14px, -22px, 0) scale(1.35);
+  }
+}
+
+@keyframes genesis-heartbeat {
+  0%,
+  64%,
+  100% {
+    transform: scale(1);
+  }
+  12% {
+    transform: scale(1.08);
+  }
+  22% {
+    transform: scale(0.98);
+  }
+}
+
+@keyframes genesis-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+@keyframes genesis-blink {
+  0%,
+  88%,
+  100% {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+  91%,
+  94% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}

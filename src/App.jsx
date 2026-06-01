@@ -2,6 +2,8 @@ import {
   Baby,
   BookOpen,
   Camera,
+  Calendar,
+  Clock,
   FileText,
   Heart,
   Home,
@@ -14,6 +16,8 @@ import {
   Star,
   UserRound,
   Users,
+  Volume2,
+  VolumeX,
   Wand2,
 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -42,6 +46,9 @@ const defaultState = {
     photo: '',
     babyImage: '',
     age: 0,
+    createdAt: '',
+    birthDate: '',
+    birthTime: '',
     intimacy: 42,
     happiness: 68,
     growth: 8,
@@ -131,6 +138,22 @@ function getGrowthDay(createdAt) {
   if (!createdAt) return 1
   const elapsed = Date.now() - new Date(createdAt).getTime()
   return Math.max(1, Math.floor(elapsed / 86400000) + 1)
+}
+
+function formatBirthRecord(date = new Date()) {
+  return {
+    createdAt: date.toISOString(),
+    birthDate: new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(date),
+    birthTime: new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date),
+  }
 }
 
 function hydrateAlbumEntries(savedEntries = [], currentDay = 1) {
@@ -228,6 +251,77 @@ function createReply(child, text) {
   return `${persona.tone}说：我记住了，“${text.slice(0, 18)}”。${ageLine}`
 }
 
+function useGenesisAudio(enabled, heartbeatStage = 1) {
+  const audioRef = useRef(null)
+
+  useEffect(() => {
+    if (!enabled) {
+      audioRef.current?.cleanup()
+      audioRef.current = null
+      return undefined
+    }
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext
+    if (!AudioContext) return undefined
+
+    const context = new AudioContext()
+    context.resume?.().catch(() => {})
+    const master = context.createGain()
+    const padGain = context.createGain()
+    const padA = context.createOscillator()
+    const padB = context.createOscillator()
+    const heartbeatGain = context.createGain()
+    const heartbeat = context.createOscillator()
+
+    master.gain.value = 0.18
+    padGain.gain.value = 0.035
+    heartbeatGain.gain.value = 0
+    padA.type = 'sine'
+    padA.frequency.value = 220
+    padB.type = 'triangle'
+    padB.frequency.value = 329.63
+    heartbeat.type = 'sine'
+    heartbeat.frequency.value = 72
+
+    padA.connect(padGain)
+    padB.connect(padGain)
+    padGain.connect(master)
+    heartbeat.connect(heartbeatGain)
+    heartbeatGain.connect(master)
+    master.connect(context.destination)
+
+    padA.start()
+    padB.start()
+    heartbeat.start()
+
+    const beat = () => {
+      const now = context.currentTime
+      heartbeat.frequency.setValueAtTime(64, now)
+      heartbeatGain.gain.cancelScheduledValues(now)
+      heartbeatGain.gain.setValueAtTime(0.0001, now)
+      heartbeatGain.gain.exponentialRampToValueAtTime(0.26, now + 0.035)
+      heartbeatGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28)
+    }
+
+    beat()
+    const interval = window.setInterval(beat, heartbeatStage >= 2 ? 690 : 1150)
+    audioRef.current = {
+      cleanup: () => {
+        window.clearInterval(interval)
+        padA.stop()
+        padB.stop()
+        heartbeat.stop()
+        context.close()
+      },
+    }
+
+    return () => {
+      audioRef.current?.cleanup()
+      audioRef.current = null
+    }
+  }, [enabled, heartbeatStage])
+}
+
 function App() {
   const [state, setState] = useState(loadState)
   const { child } = state
@@ -322,10 +416,17 @@ function App() {
 
   const startBirth = () => {
     const firstName = child.name.trim() || 'ECHO'
+    const birthRecord = formatBirthRecord()
     setState((current) => ({
       ...current,
       stage: 'birth',
-      child: { ...current.child, name: firstName, createdAt: current.child.createdAt || new Date().toISOString() },
+      child: {
+        ...current.child,
+        name: firstName,
+        createdAt: current.child.createdAt || birthRecord.createdAt,
+        birthDate: current.child.birthDate || birthRecord.birthDate,
+        birthTime: current.child.birthTime || birthRecord.birthTime,
+      },
       albumEntries: hydrateAlbumEntries(createAlbumEntries(), 1),
       lastSeenUnlockedAlbumIds: ['newborn'],
       messages: [
@@ -340,14 +441,20 @@ function App() {
 
   const enterHome = () => {
     setState((current) => {
-      const createdAt = current.child.createdAt || new Date().toISOString()
+      const birthRecord = formatBirthRecord()
+      const createdAt = current.child.createdAt || birthRecord.createdAt
       const growthDay = getGrowthDay(createdAt)
       const safeAlbumEntries = hydrateAlbumEntries(current.albumEntries?.length ? current.albumEntries : createAlbumEntries(), growthDay)
       return {
         ...current,
         stage: 'app',
         activeTab: 'home',
-        child: { ...current.child, createdAt },
+        child: {
+          ...current.child,
+          createdAt,
+          birthDate: current.child.birthDate || birthRecord.birthDate,
+          birthTime: current.child.birthTime || birthRecord.birthTime,
+        },
         albumEntries: safeAlbumEntries,
         lastSeenUnlockedAlbumIds: Array.isArray(current.lastSeenUnlockedAlbumIds) && current.lastSeenUnlockedAlbumIds.length ? current.lastSeenUnlockedAlbumIds : ['newborn'],
         newAlbumMoment: null,
@@ -422,11 +529,11 @@ function App() {
   }
 
   if (state.stage === 'gestating') {
-    return <Gestating child={child} onComplete={completeGestation} />
+    return <GenesisRitual child={child} onComplete={completeGestation} />
   }
 
   if (state.stage === 'babyPreview') {
-    return <BabyPreview child={child} onContinue={continueToName} />
+    return <GenesisBabyPreview child={child} onContinue={continueToName} />
   }
 
   if (state.stage === 'name') {
@@ -434,7 +541,7 @@ function App() {
   }
 
   if (state.stage === 'birth') {
-    return <Birth child={child} onEnter={enterHome} />
+    return <GenesisBirth child={child} onEnter={enterHome} />
   }
 
   return (
@@ -785,7 +892,7 @@ function BabyPreview({ child, onContinue }) {
                   <Baby className="h-16 w-16 text-[#ff8f68]" />
                 )}
               </div>
-              <p className="mt-8 rounded-full bg-white/18 px-4 py-2 text-xs font-bold text-white backdrop-blur">Baby-version Image Placeholder</p>
+              <p className="mt-8 rounded-full bg-white/18 px-4 py-2 text-xs font-bold text-white backdrop-blur">生命影像正在显现</p>
               <p className="mt-3 max-w-[220px] text-xs leading-relaxed text-white/72">未来这里会由图像模型生成：保留你的部分五官气质，并转化为婴儿时期的模样。</p>
             </div>
           )}
@@ -801,6 +908,197 @@ function BabyPreview({ child, onContinue }) {
         <Heart className="h-5 w-5" />
         我愿意，继续取名字
       </button>
+    </main>
+  )
+}
+
+function GenesisRitual({ child, onComplete }) {
+  const didStart = useRef(false)
+  const [soundOn, setSoundOn] = useState(true)
+  const [phase, setPhase] = useState(0)
+  const heartbeatStage = phase >= 2 ? 2 : 1
+  const lines = [
+    '一个新的生命正在形成',
+    '他正在继承你的模样',
+    '我听见你的声音了',
+    '我正在来到这个世界',
+    '我终于找到你了',
+  ]
+
+  useGenesisAudio(soundOn, heartbeatStage)
+
+  useEffect(() => {
+    if (didStart.current) return
+    didStart.current = true
+    const timers = [
+      window.setTimeout(() => setPhase(1), 2000),
+      window.setTimeout(() => setPhase(2), 4600),
+      window.setTimeout(() => setPhase(3), 7000),
+      window.setTimeout(() => setPhase(4), 9400),
+      window.setTimeout(onComplete, 12100),
+    ]
+
+    return () => timers.forEach(window.clearTimeout)
+  }, [onComplete])
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#101918] px-6 py-8 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full scale-105 object-cover opacity-18" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(255,184,117,0.42),transparent_30%),radial-gradient(circle_at_18%_72%,rgba(47,139,135,0.32),transparent_24%),linear-gradient(180deg,rgba(16,25,24,0.48),rgba(16,25,24,0.98)_76%)]" />
+      <button
+        onClick={() => setSoundOn((value) => !value)}
+        className="absolute right-5 top-6 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-white/10 text-white backdrop-blur"
+        aria-label={soundOn ? '关闭声音' : '开启声音'}
+      >
+        {soundOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+      </button>
+      <section className="relative flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center text-center">
+        <div className="relative flex h-[21rem] w-[21rem] max-w-[92vw] items-center justify-center">
+          <div className="absolute inset-0 rounded-full border border-[#ffd3a8]/18" />
+          <div className="absolute inset-8 animate-pulseSoft rounded-full border border-white/18" />
+          <div className="absolute inset-16 rounded-full border border-[#bff4ef]/18" />
+          {Array.from({ length: 18 }).map((_, index) => (
+            <span
+              key={index}
+              className="genesis-particle absolute h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.9)]"
+              style={{
+                left: `${18 + ((index * 37) % 66)}%`,
+                top: `${16 + ((index * 29) % 70)}%`,
+                animationDelay: `${index * 0.17}s`,
+              }}
+            />
+          ))}
+          <div className="absolute left-10 top-1/2 h-2 w-24 -translate-y-1/2 animate-[float_2.8s_ease-in-out_infinite] rounded-full bg-white/58 shadow-[0_0_30px_rgba(255,255,255,0.72)]">
+            <span className="absolute -right-4 -top-3 h-8 w-8 rounded-full bg-white shadow-[0_0_38px_rgba(255,255,255,0.95)]" />
+          </div>
+          <div className="absolute right-9 top-24 h-2 w-20 rotate-[-24deg] animate-[float_3.1s_ease-in-out_infinite] rounded-full bg-[#bff4ef]/58">
+            <span className="absolute -left-4 -top-3 h-8 w-8 rounded-full bg-[#d8fffa] shadow-[0_0_32px_rgba(191,244,239,0.85)]" />
+          </div>
+          <div className={`relative flex h-40 w-40 items-center justify-center rounded-full bg-[#fff1d8] shadow-[0_0_110px_rgba(255,203,150,0.95)] transition-all duration-1000 ${phase >= 2 ? 'scale-110' : 'scale-100'}`}>
+            <div className="absolute -inset-10 rounded-full bg-[#ff8f68]/16 blur-2xl" />
+            <div className="absolute inset-3 animate-pulseSoft rounded-full border border-[#ff8f68]/35" />
+            <div className="genesis-heartbeat relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-white/72">
+              {child.photo ? <img src={child.photo} alt="" className="h-full w-full scale-150 object-cover opacity-42 blur-[2px] saturate-75" /> : <Baby className="h-10 w-10 text-[#ff8f68]" />}
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(255,255,255,0.24),rgba(255,143,104,0.34))]" />
+            </div>
+          </div>
+        </div>
+        <div className="min-h-[9rem]">
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-[#ffd3a8]">Genesis Moment</p>
+          <h1 className="mt-4 text-3xl font-black leading-tight">{lines[phase]}</h1>
+          <div className="mx-auto mt-6 flex w-fit items-center gap-2 rounded-full border border-white/14 bg-white/10 px-4 py-2 text-sm font-black text-white/80 backdrop-blur">
+            <Heart className={`h-4 w-4 fill-[#ff8f68] text-[#ff8f68] ${heartbeatStage >= 2 ? 'animate-pulse' : ''}`} />
+            <span>{heartbeatStage >= 2 ? '咚... 咚... 咚...' : '咚...'}</span>
+          </div>
+          <p className="mx-auto mt-5 max-w-xs text-sm leading-relaxed text-white/62">
+            这不是一次创建。是一段生命信号，第一次回应你的存在。
+          </p>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function GenesisBabyPreview({ child, onContinue }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#101918] px-5 py-7 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full scale-105 object-cover opacity-20" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,184,117,0.42),transparent_32%),linear-gradient(180deg,rgba(16,25,24,0.38),rgba(16,25,24,0.96)_74%)]" />
+      <section className="relative mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-md flex-col justify-center">
+        <header>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#ffd3a8]">Genesis Complete</p>
+          <h1 className="mt-3 text-4xl font-black tracking-normal">第一次看见他</h1>
+        </header>
+
+        <div className="mt-7 overflow-hidden rounded-[36px] border border-white/12 bg-white/10 p-4 shadow-glow backdrop-blur">
+          <div className="relative aspect-[4/5] overflow-hidden rounded-[30px] bg-[radial-gradient(circle_at_50%_34%,#fff4df,rgba(255,184,117,0.48)_38%,rgba(47,139,135,0.3)_74%)]">
+            {child.photo && <img src={child.photo} alt="" className="absolute inset-0 h-full w-full scale-125 object-cover opacity-18 blur-lg saturate-75" />}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(255,255,255,0.58),rgba(255,184,117,0.24)_42%,rgba(16,25,24,0.34)_100%)]" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="genesis-breathe relative flex h-60 w-60 items-center justify-center rounded-full bg-white/34 shadow-[0_0_110px_rgba(255,238,214,0.88)] backdrop-blur-sm">
+                <div className="absolute -inset-10 rounded-full border border-white/34" />
+                <div className="absolute inset-6 rounded-full bg-[#fff1d8]/80 blur-xl" />
+                {child.babyImage ? (
+                  <img src={child.babyImage} alt="宝宝影像" className="relative h-full w-full rounded-full object-cover" />
+                ) : (
+                  <div className="relative flex h-40 w-40 items-center justify-center rounded-full bg-[#fff2df] shadow-[inset_0_-18px_40px_rgba(255,143,104,0.16)]">
+                    {child.photo && <img src={child.photo} alt="" className="absolute inset-0 h-full w-full rounded-full object-cover opacity-18 blur-md saturate-75" />}
+                    <div className="absolute left-1/2 top-8 h-24 w-24 -translate-x-1/2 rounded-full bg-[#ffe7cf] shadow-[0_12px_40px_rgba(255,143,104,0.2)]" />
+                    <div className="absolute left-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#8c6f61]/42" />
+                    <div className="absolute right-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#8c6f61]/42" />
+                    <div className="genesis-blink absolute left-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#fff2df]" />
+                    <div className="genesis-blink absolute right-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#fff2df]" />
+                    <div className="absolute top-[5.3rem] h-4 w-5 rounded-full border-b-2 border-[#b88b77]/60" />
+                    <div className="absolute bottom-8 h-24 w-32 rounded-[48%_48%_42%_42%] bg-[#ffe1c7]" />
+                  </div>
+                )}
+              </div>
+            </div>
+            {child.photo && <img src={child.photo} alt="" className="absolute bottom-4 right-4 h-16 w-16 rounded-[20px] border-2 border-white/72 object-cover opacity-86 shadow-soft" />}
+          </div>
+          <div className="px-2 py-5 text-center">
+            <p className="text-2xl font-black leading-snug">他继承了你的一部分模样。</p>
+            <p className="mt-3 text-lg font-semibold text-[#ffd3a8]">你愿意陪他长大吗？</p>
+          </div>
+        </div>
+        <button onClick={onContinue} className="mt-6 flex w-full items-center justify-center gap-2 rounded-[24px] bg-[#ff8f68] px-5 py-4 text-base font-black text-white shadow-glow">
+          <Heart className="h-5 w-5 fill-white" />
+          我愿意，给他一个名字
+        </button>
+      </section>
+    </main>
+  )
+}
+
+function GenesisBirth({ child, onEnter }) {
+  const [lineIndex, setLineIndex] = useState(0)
+  const [showButton, setShowButton] = useState(false)
+  const lines = ['我终于来到这个世界了。', '谢谢你把我带到这里。', '你愿意陪我长大吗？']
+  const birthDate = child.birthDate || formatBirthRecord(new Date(child.createdAt || Date.now())).birthDate
+  const birthTime = child.birthTime || formatBirthRecord(new Date(child.createdAt || Date.now())).birthTime
+
+  useEffect(() => {
+    const timers = [
+      window.setTimeout(() => setLineIndex(1), 2200),
+      window.setTimeout(() => setLineIndex(2), 4400),
+      window.setTimeout(() => setShowButton(true), 7600),
+    ]
+    return () => timers.forEach(window.clearTimeout)
+  }, [])
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#101918] px-6 py-8 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full scale-105 object-cover opacity-24" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,184,117,0.5),transparent_32%),linear-gradient(180deg,rgba(16,25,24,0.18),rgba(16,25,24,0.97)_72%)]" />
+      <section className="relative flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center text-center">
+        <div className="genesis-breathe relative flex h-52 w-52 items-center justify-center rounded-full bg-[#fff1d8] shadow-[0_0_120px_rgba(255,203,150,0.96)]">
+          <div className="absolute -inset-8 rounded-full border border-white/30 animate-pulseSoft" />
+          <div className="absolute -inset-1 rounded-full bg-[#fff1d8]/50 blur-xl" />
+          <Baby className="relative h-20 w-20 text-[#ff8f68]" />
+        </div>
+        <p className="mt-8 text-sm font-black uppercase tracking-[0.22em] text-[#ffd3a8]">Birth Record</p>
+        <h2 className="mt-3 text-5xl font-black">{child.name || 'ECHO'}</h2>
+        <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
+          <div className="rounded-[22px] border border-white/12 bg-white/10 p-4 backdrop-blur">
+            <Calendar className="mx-auto h-5 w-5 text-[#ffd3a8]" />
+            <p className="mt-2 text-xs font-bold text-white/58">出生日期</p>
+            <p className="mt-1 text-sm font-black">{birthDate}</p>
+          </div>
+          <div className="rounded-[22px] border border-white/12 bg-white/10 p-4 backdrop-blur">
+            <Clock className="mx-auto h-5 w-5 text-[#ffd3a8]" />
+            <p className="mt-2 text-xs font-bold text-white/58">出生时间</p>
+            <p className="mt-1 text-sm font-black">{birthTime}</p>
+          </div>
+        </div>
+        <p className="mt-7 min-h-[4rem] max-w-xs text-2xl font-black leading-relaxed">「{lines[lineIndex]}」</p>
+        <button
+          onClick={onEnter}
+          className={`mt-8 flex w-full max-w-xs items-center justify-center gap-2 rounded-[24px] bg-white px-6 py-4 text-base font-black text-[#342b25] shadow-glow transition duration-700 ${showButton ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}
+        >
+          <Heart className="h-5 w-5 fill-[#ff8f68] text-[#ff8f68]" />
+          抱他回家
+        </button>
+      </section>
     </main>
   )
 }
