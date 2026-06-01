@@ -38,10 +38,12 @@ const personalities = [
 const defaultState = {
   stage: 'familyMode',
   familyMode: '',
+  parentGender: '',
+  babyGenderMode: 'natural',
   activeTab: 'home',
   child: {
     name: '',
-    gender: 'girl',
+    gender: '',
     personality: 'gentle',
     photo: '',
     babyImage: '',
@@ -63,7 +65,7 @@ const defaultState = {
   inventory: [],
 }
 
-const validStages = new Set(['familyMode', 'coupleSoon', 'splash', 'create', 'gestating', 'babyPreview', 'name', 'birth', 'app'])
+const validStages = new Set(['familyMode', 'parentIdentity', 'babyGenderChoice', 'babyGenderLocked', 'coupleSoon', 'splash', 'create', 'gestating', 'babyPreview', 'name', 'birth', 'app'])
 const validTabs = new Set(['home', 'chat', 'events', 'album', 'shop', 'report'])
 
 const imageGenerationService = {
@@ -185,6 +187,8 @@ function loadState() {
     const child = { ...defaultState.child, ...parsed.child }
     const currentDay = getGrowthDay(child.createdAt)
     const savedFamilyMode = parsed.familyMode === 'single' || parsed.familyMode === 'couple' ? parsed.familyMode : defaultState.familyMode
+    const savedParentGender = parsed.parentGender === 'male' || parsed.parentGender === 'female' ? parsed.parentGender : defaultState.parentGender
+    const savedBabyGenderMode = parsed.babyGenderMode === 'selected' ? 'selected' : 'natural'
     const savedStage = validStages.has(parsed.stage) ? parsed.stage : defaultState.stage
     const migratedStage = !savedFamilyMode && (savedStage === 'splash' || savedStage === 'create') ? 'familyMode' : savedStage
     return {
@@ -192,6 +196,8 @@ function loadState() {
       ...parsed,
       stage: migratedStage,
       familyMode: savedFamilyMode,
+      parentGender: savedParentGender,
+      babyGenderMode: savedBabyGenderMode,
       activeTab: validTabs.has(parsed.activeTab) ? parsed.activeTab : defaultState.activeTab,
       child,
       messages: Array.isArray(parsed.messages) ? parsed.messages : [],
@@ -226,6 +232,22 @@ function clamp(value) {
 
 function getPersonality(child) {
   return personalities.find((item) => item.id === child.personality) || personalities[0]
+}
+
+function getParentRole(parentGender) {
+  return parentGender === 'female' ? '妈妈' : '爸爸'
+}
+
+function getBabyGenderLabel(gender) {
+  return gender === 'girl' ? '女宝宝' : '男宝宝'
+}
+
+function getBabyPronoun(gender) {
+  return gender === 'girl' ? '她' : '他'
+}
+
+function createNaturalBabyGender() {
+  return Math.random() > 0.5 ? 'girl' : 'boy'
 }
 
 function createReply(child, text) {
@@ -473,15 +495,36 @@ function App() {
     setState((current) => ({
       ...current,
       familyMode,
-      stage: familyMode === 'single' ? 'create' : 'coupleSoon',
+      stage: familyMode === 'single' ? 'parentIdentity' : 'coupleSoon',
+    }))
+  }
+
+  const chooseParentGender = (parentGender) => {
+    setState((current) => ({
+      ...current,
+      parentGender,
+      stage: 'babyGenderChoice',
+    }))
+  }
+
+  const chooseBabyGenderMode = (babyGenderMode) => {
+    setState((current) => ({
+      ...current,
+      babyGenderMode,
+      stage: babyGenderMode === 'natural' ? 'create' : 'babyGenderLocked',
+      child: {
+        ...current.child,
+        gender: babyGenderMode === 'natural' ? '' : current.child.gender,
+      },
     }))
   }
 
   const beginGestation = (photo) => {
+    const generatedGender = state.babyGenderMode === 'natural' ? createNaturalBabyGender() : child.gender || createNaturalBabyGender()
     setState((current) => ({
       ...current,
       stage: 'gestating',
-      child: { ...current.child, photo, babyImage: '' },
+      child: { ...current.child, photo, babyImage: '', gender: generatedGender },
     }))
   }
 
@@ -505,12 +548,14 @@ function App() {
   const startBirth = () => {
     const firstName = child.name.trim() || 'ECHO'
     const birthRecord = formatBirthRecord()
+    const resolvedGender = child.gender || createNaturalBabyGender()
     setState((current) => ({
       ...current,
       stage: 'birth',
       child: {
         ...current.child,
         name: firstName,
+        gender: current.child.gender || resolvedGender,
         createdAt: current.child.createdAt || birthRecord.createdAt,
         birthDate: current.child.birthDate || birthRecord.birthDate,
         birthTime: current.child.birthTime || birthRecord.birthTime,
@@ -604,6 +649,18 @@ function App() {
     return <FamilyModeSelection onSelect={chooseFamilyMode} />
   }
 
+  if (state.stage === 'parentIdentity') {
+    return <ParentIdentitySelection onSelect={chooseParentGender} onBack={() => setState((current) => ({ ...current, familyMode: '', stage: 'familyMode' }))} />
+  }
+
+  if (state.stage === 'babyGenderChoice') {
+    return <BabyGenderChoice parentGender={state.parentGender} onSelect={chooseBabyGenderMode} onBack={() => setState((current) => ({ ...current, stage: 'parentIdentity' }))} />
+  }
+
+  if (state.stage === 'babyGenderLocked') {
+    return <BabyGenderLocked onBack={() => setState((current) => ({ ...current, babyGenderMode: 'natural', stage: 'babyGenderChoice' }))} />
+  }
+
   if (state.stage === 'coupleSoon') {
     return <CoupleComingSoon onBack={() => setState((current) => ({ ...current, familyMode: '', stage: 'familyMode' }))} />
   }
@@ -613,7 +670,7 @@ function App() {
   }
 
   if (state.stage === 'create') {
-    return <Create child={child} persona={persona} updateChild={updateChild} onPhotoReady={beginGestation} />
+    return <Create child={child} persona={persona} parentGender={state.parentGender} babyGenderMode={state.babyGenderMode} updateChild={updateChild} onPhotoReady={beginGestation} />
   }
 
   if (state.stage === 'gestating') {
@@ -629,7 +686,7 @@ function App() {
   }
 
   if (state.stage === 'birth') {
-    return <GenesisBirth child={child} onEnter={enterHome} />
+    return <GenesisBirth child={child} parentGender={state.parentGender} onEnter={enterHome} />
   }
 
   return (
@@ -824,6 +881,117 @@ function CoupleComingSoon({ onBack }) {
   )
 }
 
+function ParentIdentitySelection({ onSelect, onBack }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#1f2928] px-5 py-8 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-22" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_24%,rgba(255,184,117,0.4),transparent_30%),linear-gradient(180deg,rgba(31,41,40,0.18),rgba(31,41,40,0.98)_76%)]" />
+      <section className="relative mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col">
+        <button onClick={onBack} className="w-fit rounded-full bg-white/10 px-4 py-2 text-xs font-black text-white/72 backdrop-blur">
+          返回
+        </button>
+        <header className="pt-10">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#ffd3a8]">Your Identity</p>
+          <h1 className="mt-4 text-5xl font-black leading-[0.95] tracking-normal">选择你的身份</h1>
+          <p className="mt-5 max-w-xs text-lg font-semibold leading-relaxed text-white/72">
+            这会决定宝宝出生后，ECHO 如何记住你。
+          </p>
+        </header>
+        <div className="mt-10 grid grid-cols-2 gap-4">
+          <button onClick={() => onSelect('male')} className="rounded-[32px] border border-white/14 bg-white/95 p-5 text-left text-[#342b25] shadow-glow">
+            <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[#fff0df] text-[#ff8f68]">
+              <UserRound className="h-7 w-7" />
+            </div>
+            <h2 className="mt-5 text-3xl font-black">男</h2>
+            <p className="mt-2 text-sm font-bold text-[#7a6a5c]">出生后称为爸爸</p>
+          </button>
+          <button onClick={() => onSelect('female')} className="rounded-[32px] border border-white/14 bg-white/95 p-5 text-left text-[#342b25] shadow-glow">
+            <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[#e9f5f2] text-[#2f8b87]">
+              <Heart className="h-7 w-7" />
+            </div>
+            <h2 className="mt-5 text-3xl font-black">女</h2>
+            <p className="mt-2 text-sm font-bold text-[#7a6a5c]">出生后称为妈妈</p>
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function BabyGenderChoice({ parentGender, onSelect, onBack }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#fff8ef] px-5 py-8 text-[#342b25]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,184,117,0.28),transparent_32%),linear-gradient(180deg,#fff8ef,#f7eee2)]" />
+      <section className="relative mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col">
+        <button onClick={onBack} className="w-fit rounded-full bg-white px-4 py-2 text-xs font-black text-[#8a7867] shadow-soft">
+          返回
+        </button>
+        <header className="pt-8">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#2f8b87]">Birth Path</p>
+          <h1 className="mt-4 text-4xl font-black leading-tight">宝宝性别由 ECHO 自然诞生</h1>
+          <p className="mt-4 text-base font-semibold leading-relaxed text-[#7a6a5c]">
+            {getParentRole(parentGender)}，你可以让生命以自己的方式来到你身边；如果心里已经有期待，未来也可以指定。
+          </p>
+        </header>
+        <div className="mt-8 space-y-4">
+          <button onClick={() => onSelect('natural')} className="w-full rounded-[32px] bg-[#342b25] p-5 text-left text-white shadow-glow">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-white/12 text-[#ffd3a8]">
+                <Sparkles className="h-7 w-7" />
+              </div>
+              <span className="rounded-full bg-white/12 px-3 py-1 text-xs font-black text-white/72">免费</span>
+            </div>
+            <h2 className="mt-5 text-2xl font-black">自然诞生</h2>
+            <p className="mt-3 text-sm leading-relaxed text-white/70">
+              不提前选择男孩或女孩。宝宝会在出生那一刻被揭示。
+            </p>
+            <div className="mt-5 rounded-[22px] bg-white px-5 py-4 text-center text-base font-black text-[#342b25]">
+              让生命自己到来
+            </div>
+          </button>
+          <button onClick={() => onSelect('selected')} className="w-full rounded-[32px] border border-[#ead9c9] bg-white p-5 text-left shadow-soft">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[#fff0df] text-[#ff8f68]">
+                <Star className="h-7 w-7" />
+              </div>
+              <span className="rounded-full bg-[#fff0df] px-3 py-1 text-xs font-black text-[#ff8f68]">Pro</span>
+            </div>
+            <h2 className="mt-5 text-2xl font-black">指定宝宝性别</h2>
+            <p className="mt-3 text-sm leading-relaxed text-[#7a6a5c]">
+              如果你心里已经有了期待，正式版可以亲自选择男宝宝或女宝宝。
+            </p>
+            <div className="mt-5 rounded-[22px] bg-[#f4e7da] px-5 py-4 text-center text-base font-black text-[#8a7867]">
+              指定性别将在正式版开放
+            </div>
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function BabyGenderLocked({ onBack }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#1f2928] px-6 py-10 text-white">
+      <img src={roomImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-18" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(255,184,117,0.38),transparent_32%),linear-gradient(180deg,rgba(31,41,40,0.16),rgba(31,41,40,0.96))]" />
+      <section className="relative flex min-h-[calc(100vh-5rem)] flex-col items-center justify-center text-center">
+        <div className="flex h-28 w-28 items-center justify-center rounded-full bg-white/12 text-[#ffd3a8] shadow-glow backdrop-blur">
+          <Star className="h-12 w-12" />
+        </div>
+        <p className="mt-8 text-sm font-black uppercase text-[#ffd3a8]">Pro Preview</p>
+        <h1 className="mt-3 text-4xl font-black">指定宝宝性别将在正式版开放</h1>
+        <p className="mt-5 max-w-xs text-lg font-semibold leading-relaxed text-white/72">
+          现在先体验自然诞生，让宝宝在出生那一刻给你答案。
+        </p>
+        <button onClick={onBack} className="mt-9 w-full max-w-xs rounded-[24px] bg-white px-6 py-4 text-base font-black text-[#342b25] shadow-glow">
+          返回自然诞生
+        </button>
+      </section>
+    </main>
+  )
+}
+
 function Splash({ onStart }) {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#fff6ea] text-[#342b25]">
@@ -850,7 +1018,7 @@ function Splash({ onStart }) {
   )
 }
 
-function Create({ child, persona, updateChild, onPhotoReady }) {
+function Create({ child, persona, parentGender, babyGenderMode, updateChild, onPhotoReady }) {
   const handlePhoto = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -875,17 +1043,13 @@ function Create({ child, persona, updateChild, onPhotoReady }) {
           <input type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
         </label>
 
-        <ControlGroup title="孩子性别">
-          {['girl', 'boy'].map((gender) => (
-            <button
-              key={gender}
-              onClick={() => updateChild({ gender })}
-              className={`rounded-[20px] px-5 py-3 text-sm font-bold ${child.gender === gender ? 'bg-[#342b25] text-white' : 'bg-white text-[#6b5c4e]'}`}
-            >
-              {gender === 'girl' ? '女孩' : '男孩'}
-            </button>
-          ))}
-        </ControlGroup>
+        <div className="rounded-[28px] bg-white p-5 shadow-soft">
+          <p className="text-sm font-black text-[#2f8b87]">生命路径</p>
+          <h2 className="mt-2 text-xl font-black">{babyGenderMode === 'natural' ? '宝宝性别将在出生时揭示' : '指定性别预留'}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-[#7a6a5c]">
+            {getParentRole(parentGender)}，现在只需要上传你的照片。ECHO 会在 Genesis 中自然完成诞生。
+          </p>
+        </div>
 
         <ControlGroup title="初始性格">
           <div className="grid grid-cols-2 gap-3">
@@ -1180,7 +1344,7 @@ function BabyPortrait({ child }) {
   )
 }
 
-function GenesisBirth({ child, onEnter }) {
+function GenesisBirth({ child, parentGender, onEnter }) {
   const [lineIndex, setLineIndex] = useState(0)
   const [showButton, setShowButton] = useState(false)
   const [cryPlayed, setCryPlayed] = useState(false)
@@ -1188,6 +1352,10 @@ function GenesisBirth({ child, onEnter }) {
   const lines = ['我终于来到这个世界了。', '谢谢你把我带到这里。', '你愿意陪我长大吗？']
   const birthDate = child.birthDate || formatBirthRecord(new Date(child.createdAt || Date.now())).birthDate
   const birthTime = child.birthTime || formatBirthRecord(new Date(child.createdAt || Date.now())).birthTime
+  const babyGenderLabel = getBabyGenderLabel(child.gender)
+  const babyPronoun = getBabyPronoun(child.gender)
+  const parentRole = getParentRole(parentGender)
+  const parentVow = `${parentRole}会好好爱你，陪你到永远。`
 
   useEffect(() => {
     const timers = [
@@ -1227,6 +1395,10 @@ function GenesisBirth({ child, onEnter }) {
         </button>
         <p className="mt-8 text-sm font-black uppercase tracking-[0.22em] text-[#ffd3a8]">Birth Record</p>
         <h2 className="mt-3 text-5xl font-black">{child.name || 'ECHO'}</h2>
+        <div className="mt-5 rounded-[28px] border border-white/12 bg-white/10 p-5 backdrop-blur">
+          <p className="text-xl font-black leading-relaxed">恭喜你。一位{babyGenderLabel}来到了这个世界。</p>
+          <p className="mt-2 text-base font-semibold text-white/72">从这一刻起，{babyPronoun}就交给你了。</p>
+        </div>
         <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
           <div className="rounded-[22px] border border-white/12 bg-white/10 p-4 backdrop-blur">
             <Calendar className="mx-auto h-5 w-5 text-[#ffd3a8]" />
@@ -1241,10 +1413,10 @@ function GenesisBirth({ child, onEnter }) {
         </div>
         <p className="mt-7 min-h-[4rem] max-w-xs text-2xl font-black leading-relaxed">「{lines[lineIndex]}」</p>
         <div className="mt-2 rounded-[26px] border border-white/12 bg-white/10 p-4 backdrop-blur">
-          <p className="text-lg font-black leading-relaxed text-[#ffd3a8]">爸爸会好好爱你，陪你到永远。</p>
+          <p className="text-lg font-black leading-relaxed text-[#ffd3a8]">{parentVow}</p>
           <button onClick={handleVow} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-xs font-black text-white/78">
             {vowPlayed ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-            {vowPlayed ? '再听一次爸爸的誓言' : '播放爸爸的誓言'}
+            {vowPlayed ? `再听一次${parentRole}的誓言` : `播放${parentRole}的誓言`}
           </button>
         </div>
         <button
