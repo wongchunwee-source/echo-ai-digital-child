@@ -1,3 +1,4 @@
+import React from 'react'
 import { Lock, Sparkles } from 'lucide-react'
 
 function AlbumCard({ entry, isLast }) {

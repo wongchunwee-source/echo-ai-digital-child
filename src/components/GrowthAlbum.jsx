@@ -1,3 +1,4 @@
+import React from 'react'
 import AlbumCard from './AlbumCard.jsx'
 
 function GrowthAlbum({ entries, child }) {

@@ -1,3 +1,4 @@
+import React from 'react'
 import { BookOpen, Camera } from 'lucide-react'
 
 function GrowthPreviewCard({ nextEntry, onOpen }) {
