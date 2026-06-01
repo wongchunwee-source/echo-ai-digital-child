@@ -322,6 +322,94 @@ function useGenesisAudio(enabled, heartbeatStage = 1) {
   }, [enabled, heartbeatStage])
 }
 
+function playBabyCry() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext
+  if (!AudioContext) return
+
+  const context = new AudioContext()
+  context.resume?.().catch(() => {})
+  const master = context.createGain()
+  const tremolo = context.createGain()
+  const voice = context.createOscillator()
+  const overtone = context.createOscillator()
+
+  master.gain.value = 0.0001
+  tremolo.gain.value = 0.36
+  voice.type = 'sawtooth'
+  overtone.type = 'triangle'
+  voice.frequency.value = 520
+  overtone.frequency.value = 780
+
+  voice.connect(tremolo)
+  overtone.connect(tremolo)
+  tremolo.connect(master)
+  master.connect(context.destination)
+  voice.start()
+  overtone.start()
+
+  const cryBurst = (start, high = 650, low = 430) => {
+    voice.frequency.setValueAtTime(high, start)
+    voice.frequency.exponentialRampToValueAtTime(low, start + 0.55)
+    overtone.frequency.setValueAtTime(high * 1.42, start)
+    overtone.frequency.exponentialRampToValueAtTime(low * 1.38, start + 0.55)
+    master.gain.setValueAtTime(0.0001, start)
+    master.gain.exponentialRampToValueAtTime(0.12, start + 0.06)
+    master.gain.exponentialRampToValueAtTime(0.0001, start + 0.7)
+  }
+
+  const now = context.currentTime
+  cryBurst(now + 0.02, 680, 420)
+  cryBurst(now + 0.82, 620, 390)
+  cryBurst(now + 1.56, 700, 450)
+
+  voice.stop(now + 2.35)
+  overtone.stop(now + 2.35)
+  window.setTimeout(() => context.close(), 2600)
+}
+
+function playParentVowTone() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext
+  if (!AudioContext) return
+
+  const context = new AudioContext()
+  context.resume?.().catch(() => {})
+  const master = context.createGain()
+  const breath = context.createBufferSource()
+  const lowVoice = context.createOscillator()
+  const voiceGain = context.createGain()
+  const noiseGain = context.createGain()
+  const buffer = context.createBuffer(1, context.sampleRate * 3.2, context.sampleRate)
+  const data = buffer.getChannelData(0)
+
+  for (let index = 0; index < data.length; index += 1) {
+    data[index] = (Math.random() * 2 - 1) * 0.18
+  }
+
+  master.gain.value = 0.0001
+  voiceGain.gain.value = 0.12
+  noiseGain.gain.value = 0.035
+  lowVoice.type = 'triangle'
+  lowVoice.frequency.value = 118
+  breath.buffer = buffer
+
+  lowVoice.connect(voiceGain)
+  breath.connect(noiseGain)
+  voiceGain.connect(master)
+  noiseGain.connect(master)
+  master.connect(context.destination)
+
+  const now = context.currentTime
+  master.gain.exponentialRampToValueAtTime(0.3, now + 0.16)
+  master.gain.exponentialRampToValueAtTime(0.0001, now + 3.15)
+  lowVoice.frequency.setValueAtTime(126, now)
+  lowVoice.frequency.exponentialRampToValueAtTime(96, now + 3)
+  lowVoice.start(now)
+  breath.start(now)
+  lowVoice.stop(now + 3.2)
+  breath.stop(now + 3.2)
+  window.setTimeout(() => context.close(), 3500)
+}
+
 function App() {
   const [state, setState] = useState(loadState)
   const { child } = state
@@ -1041,16 +1129,7 @@ function GenesisBabyPreview({ child, onContinue }) {
                 {child.babyImage ? (
                   <img src={child.babyImage} alt="宝宝影像" className="relative h-full w-full rounded-full object-cover" />
                 ) : (
-                  <div className="relative flex h-40 w-40 items-center justify-center rounded-full bg-[#fff2df] shadow-[inset_0_-18px_40px_rgba(255,143,104,0.16)]">
-                    {child.photo && <img src={child.photo} alt="" className="absolute inset-0 h-full w-full rounded-full object-cover opacity-18 blur-md saturate-75" />}
-                    <div className="absolute left-1/2 top-8 h-24 w-24 -translate-x-1/2 rounded-full bg-[#ffe7cf] shadow-[0_12px_40px_rgba(255,143,104,0.2)]" />
-                    <div className="absolute left-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#8c6f61]/42" />
-                    <div className="absolute right-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#8c6f61]/42" />
-                    <div className="genesis-blink absolute left-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#fff2df]" />
-                    <div className="genesis-blink absolute right-[4.6rem] top-[4.3rem] h-2 w-5 rounded-full bg-[#fff2df]" />
-                    <div className="absolute top-[5.3rem] h-4 w-5 rounded-full border-b-2 border-[#b88b77]/60" />
-                    <div className="absolute bottom-8 h-24 w-32 rounded-[48%_48%_42%_42%] bg-[#ffe1c7]" />
-                  </div>
+                  <BabyPortrait child={child} />
                 )}
               </div>
             </div>
@@ -1070,9 +1149,42 @@ function GenesisBabyPreview({ child, onContinue }) {
   )
 }
 
+function BabyPortrait({ child }) {
+  return (
+    <div className="relative h-52 w-44">
+      <div className="absolute inset-x-3 bottom-0 h-28 rounded-[44px_44px_52px_52px] bg-[#ffd9bf] shadow-[inset_0_-18px_34px_rgba(255,143,104,0.16)]" />
+      <div className="absolute inset-x-0 bottom-0 h-24 rounded-[52px_52px_58px_58px] bg-[#fff7ea] shadow-[0_18px_44px_rgba(111,73,55,0.18)]">
+        <div className="absolute left-8 top-5 h-12 w-10 rotate-[-22deg] rounded-full bg-[#ffd3a8]/70" />
+        <div className="absolute right-8 top-5 h-12 w-10 rotate-[22deg] rounded-full bg-[#ffd3a8]/70" />
+        <div className="absolute left-1/2 top-10 h-11 w-20 -translate-x-1/2 rounded-[50%] bg-[#ffe7cf]" />
+      </div>
+
+      <div className="absolute left-1/2 top-4 h-36 w-36 -translate-x-1/2">
+        <div className="absolute -left-3 top-16 h-9 w-7 rounded-full bg-[#f6bfa4] shadow-[inset_-4px_0_12px_rgba(153,96,72,0.18)]" />
+        <div className="absolute -right-3 top-16 h-9 w-7 rounded-full bg-[#f6bfa4] shadow-[inset_4px_0_12px_rgba(153,96,72,0.18)]" />
+        <div className="relative h-36 w-36 overflow-hidden rounded-[48%_48%_46%_46%] bg-[#ffd9bf] shadow-[0_18px_50px_rgba(111,73,55,0.24),inset_0_-16px_32px_rgba(222,130,92,0.16)]">
+          {child.photo && <img src={child.photo} alt="" className="absolute inset-0 h-full w-full scale-125 object-cover opacity-[0.09] blur-sm saturate-75" />}
+          <div className="absolute left-1/2 top-0 h-10 w-24 -translate-x-1/2 rounded-b-full bg-[#3d2f2a]/20 blur-[1px]" />
+          <div className="absolute left-11 top-16 h-2 w-8 rounded-full bg-[#6d5148]/55" />
+          <div className="absolute right-11 top-16 h-2 w-8 rounded-full bg-[#6d5148]/55" />
+          <div className="genesis-blink absolute left-11 top-16 h-2 w-8 rounded-full bg-[#ffd9bf]" />
+          <div className="genesis-blink absolute right-11 top-16 h-2 w-8 rounded-full bg-[#ffd9bf]" />
+          <div className="absolute left-1/2 top-[5.15rem] h-5 w-4 -translate-x-1/2 rounded-full border-b-2 border-[#b98672]/60" />
+          <div className="absolute left-1/2 top-[6.35rem] h-4 w-8 -translate-x-1/2 rounded-b-full border-b-2 border-[#a66f60]/60" />
+          <div className="absolute left-8 top-[5.7rem] h-3 w-4 rounded-full bg-[#ffb6a5]/50 blur-[1px]" />
+          <div className="absolute right-8 top-[5.7rem] h-3 w-4 rounded-full bg-[#ffb6a5]/50 blur-[1px]" />
+        </div>
+        <div className="absolute left-7 top-0 h-9 w-8 rotate-[-24deg] rounded-full border-l-4 border-[#4d3831]/36" />
+      </div>
+    </div>
+  )
+}
+
 function GenesisBirth({ child, onEnter }) {
   const [lineIndex, setLineIndex] = useState(0)
   const [showButton, setShowButton] = useState(false)
+  const [cryPlayed, setCryPlayed] = useState(false)
+  const [vowPlayed, setVowPlayed] = useState(false)
   const lines = ['我终于来到这个世界了。', '谢谢你把我带到这里。', '你愿意陪我长大吗？']
   const birthDate = child.birthDate || formatBirthRecord(new Date(child.createdAt || Date.now())).birthDate
   const birthTime = child.birthTime || formatBirthRecord(new Date(child.createdAt || Date.now())).birthTime
@@ -1086,6 +1198,16 @@ function GenesisBirth({ child, onEnter }) {
     return () => timers.forEach(window.clearTimeout)
   }, [])
 
+  const handleCry = () => {
+    playBabyCry()
+    setCryPlayed(true)
+  }
+
+  const handleVow = () => {
+    playParentVowTone()
+    setVowPlayed(true)
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#101918] px-6 py-8 text-white">
       <img src={roomImage} alt="" className="absolute inset-0 h-full w-full scale-105 object-cover opacity-24" />
@@ -1096,6 +1218,13 @@ function GenesisBirth({ child, onEnter }) {
           <div className="absolute -inset-1 rounded-full bg-[#fff1d8]/50 blur-xl" />
           <Baby className="relative h-20 w-20 text-[#ff8f68]" />
         </div>
+        <button
+          onClick={handleCry}
+          className="mt-5 flex items-center gap-2 rounded-full border border-white/14 bg-white/10 px-4 py-3 text-xs font-black text-white backdrop-blur"
+        >
+          {cryPlayed ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          {cryPlayed ? '再听一次第一声哭泣' : '开启第一声哭泣'}
+        </button>
         <p className="mt-8 text-sm font-black uppercase tracking-[0.22em] text-[#ffd3a8]">Birth Record</p>
         <h2 className="mt-3 text-5xl font-black">{child.name || 'ECHO'}</h2>
         <div className="mt-5 grid w-full max-w-xs grid-cols-2 gap-3">
@@ -1111,6 +1240,13 @@ function GenesisBirth({ child, onEnter }) {
           </div>
         </div>
         <p className="mt-7 min-h-[4rem] max-w-xs text-2xl font-black leading-relaxed">「{lines[lineIndex]}」</p>
+        <div className="mt-2 rounded-[26px] border border-white/12 bg-white/10 p-4 backdrop-blur">
+          <p className="text-lg font-black leading-relaxed text-[#ffd3a8]">爸爸会好好爱你，陪你到永远。</p>
+          <button onClick={handleVow} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-2 text-xs font-black text-white/78">
+            {vowPlayed ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            {vowPlayed ? '再听一次爸爸的誓言' : '播放爸爸的誓言'}
+          </button>
+        </div>
         <button
           onClick={onEnter}
           className={`mt-8 flex w-full max-w-xs items-center justify-center gap-2 rounded-[24px] bg-white px-6 py-4 text-base font-black text-[#342b25] shadow-glow transition duration-700 ${showButton ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}
